@@ -1,0 +1,36 @@
+{
+  "name": "sclinter",
+  "displayName": "sclinter",
+  "description": "Catálogo de errores mecánicos típicos de Software de Comunicaciones (UMA) — avisa al guardar/abrir un .cpp, sin IA, sin red.",
+  "version": "1.0.4",
+  "publisher": "uma-lenguajes-ciencias-computacion",
+  "icon": "icon.png",
+  "engines": {
+    "vscode": "^1.121.0"
+  },
+  "categories": ["Linters"],
+  "activationEvents": ["onLanguage:cpp", "onLanguage:c"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "sclinter.revisarAhora",
+        "title": "sclinter: revisar este fichero ahora"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "tsc -p ./",
+    "clean": "rm -rf out src/checkers src/rules assets",
+    "package": "node scripts/package-isolated.js"
+  },
+  "dependencies": {
+    "web-tree-sitter": "0.20.8"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "@types/vscode": "1.120.0",
+    "@vscode/vsce": "^3.9.2",
+    "typescript": "^7.0.2"
+  }
+}

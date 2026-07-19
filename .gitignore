@@ -1,0 +1,9 @@
+node_modules/
+out/
+*.vsix
+
+# La extensión sincroniza esto desde packages/core en cada build — no
+# se edita a mano y no se versiona por duplicado.
+packages/vscode-extension/src/checkers/
+packages/vscode-extension/src/rules/
+packages/vscode-extension/assets/

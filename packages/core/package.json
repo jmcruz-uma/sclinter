@@ -1,0 +1,18 @@
+{
+  "name": "@sclinter/core",
+  "version": "1.0.0",
+  "description": "Motor de detección de sclinter: las 30 reglas y el análisis con tree-sitter. Consumido por @sclinter/cli y por la extensión de VS Code — no se usa solo.",
+  "main": "./out/index.js",
+  "types": "./out/index.d.ts",
+  "scripts": {
+    "build": "tsc -p ./",
+    "clean": "rm -rf out"
+  },
+  "dependencies": {
+    "web-tree-sitter": "0.20.8"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "@types/node": "^26.1.1"
+  }
+}
