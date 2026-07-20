@@ -19,7 +19,7 @@ real sustituye `<X>` por el nombre real de la variable/función/tipo que
 aparezca en el fichero del estudiante — nunca salen literalmente en
 pantalla.
 
-## Las 30 reglas
+## Las 31 reglas
 
 | # | id | Nivel | Qué detecta y mensaje |
 |---|---|---|---|
@@ -53,3 +53,4 @@ pantalla.
 | 28 | `struct-sin-static-assert` | 1 | `&struct` **plano** (sin `std::string`/`std::vector`) enviado/recibido entero, sin que exista un `static_assert(sizeof(Tipo) == N)` en el fichero — el compilador puede meter *padding* entre campos sin que se note. |
 | 29 | `size-en-vez-de-offset` | 1 | `array.size()` usado para enviar cuando hay una variable de offset asociada con al menos un incremento **no constante** sin usar en el envío. No avisa si todos los incrementos del offset son literales/`sizeof(...)` — podría ser un protocolo de tamaño fijo donde `.size()` es correcto a propósito. |
 | 30 | `size-contenedor-no-byte-sin-aritmetica` | 1 | `contenedor.size()` **a pelo** (sin ninguna aritmética alrededor) como tamaño de `memcpy` o de las 8 funciones de E/S, con elementos que no ocupan 1 byte — `.size()` da el número de elementos, no de bytes. En cuanto hay aritmética (`.size() * sizeof(T)`) no avisa, a propósito. |
+| 31 | `io-vector-data` | 1 | `X.data()` como **destino** de `read`/`read_n`/`recv`/`recvfrom` (2º arg) o de `memcpy` (1er arg), siendo `X` un `std::vector<char\|uint8_t\|std::byte>` **declarado vacío y sin dimensionar** antes del uso. `.data()` de un vector vacío (tamaño 0) no apunta a memoria escribible — UB. Se calla si el vector se dimensionó con `resize(n)`, con constructor de tamaño (`std::vector<...> X(n)`) o con una asignación. **`reserve()` NO cuenta** (cambia la capacidad, no el tamaño). A diferencia de `io-string-data` (nivel 4, prohibido siempre), recibir a un vector dimensionado SÍ es el patrón recomendado, por eso aquí solo se marca el caso vacío. Solo vectores declarados en la función; un parámetro por referencia pudo dimensionarlo quien llama, no se marca. |

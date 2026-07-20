@@ -29,6 +29,7 @@ import { findSizeofContenedorIssues } from "../checkers/sizeofContenedor";
 import { findStructSinStaticAssertIssues } from "../checkers/structSinStaticAssert";
 import { findSizeEnVezDeOffsetIssues } from "../checkers/sizeEnVezDeOffset";
 import { findSizeContenedorNoByteSinAritmeticaIssues } from "../checkers/sizeContenedorNoByteSinAritmetica";
+import { findIoVectorDataIssues } from "../checkers/ioVectorData";
 
 export interface Rule {
   id: string;
@@ -201,5 +202,10 @@ export const RULES: Rule[] = [
     id: "size-contenedor-no-byte-sin-aritmetica",
     titulo: "contenedor.size() a pelo (sin aritmética) con elementos no-byte, como tamaño de memcpy o E/S",
     run: findSizeContenedorNoByteSinAritmeticaIssues,
+  },
+  {
+    id: "io-vector-data",
+    titulo: "read/recv/memcpy sobre vector<char|uint8_t|byte>.data() estando el vector vacío (sin resize/tamaño) — UB",
+    run: findIoVectorDataIssues,
   },
 ];
