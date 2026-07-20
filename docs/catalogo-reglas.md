@@ -1,0 +1,55 @@
+# Catálogo de reglas de sclinter
+
+Si alguna vez este documento y el código no coinciden, el código manda (y está claro que convendría regenerar esta tabla).
+
+## Niveles
+
+| Nivel | Significado |
+|---|---|
+| **1 — Mecánico** | Error de manual. El mensaje explica el problema del todo. |
+| **2 — Núcleo del examen** | El mensaje es deliberadamente vago (revelar el concepto sería regalar la respuesta a lo que se evalúa). |
+| **3 — Estilo** | El código es técnicamente correcto. Se marca solo por consistencia con el resto de la asignatura. Mensaje prefijado `[estilo, no error]`. |
+| **4 — Normativa** | Prohibido siempre en esta asignatura, aunque sea técnicamente correcto o inofensivo. |
+
+Todas las reglas se muestran como `Warning` (aviso amarillo) en VS Code,
+nunca como `Error`.
+
+Los fragmentos entre `<>` en los mensajes son marcadores: el código
+real sustituye `<X>` por el nombre real de la variable/función/tipo que
+aparezca en el fichero del estudiante — nunca salen literalmente en
+pantalla.
+
+## Las 30 reglas
+
+| # | id | Nivel | Qué detecta y mensaje |
+|---|---|---|---|
+| 1 | `sizeof-puntero` | 1 | `sizeof(X)` donde `X` es `&expresión` o una variable declarada como puntero, en **cualquier** parte del código (no solo dentro de `memcpy`). *"sizeof(\<X\>) mide el puntero (normalmente 8 bytes), no el objeto al que apunta."* |
+| 2 | `memcpy-destino-repetido` | 1 | Dos `memcpy` en la misma función escriben en el mismo destino textual sin desplazamiento entre medias. *"Este memcpy escribe en el mismo destino que otro memcpy anterior..."* **Cuatro excepciones** (no avisa si aplica alguna): (1) el offset al final del texto se reasignó entre llamadas (PDU construida campo a campo); (2) la variable de destino se **redeclaró** entre llamadas (mismo nombre por *shadowing* en un bloque anidado, objeto distinto); (3) el buffer se **envió** (`write`/`write_n`/`send`/`sendto`) entre llamadas — reutilizarlo para el siguiente mensaje es legítimo; (4) el destino es directamente un **puntero** (sin expresión compuesta) reasignado entre llamadas (`ptr += sizeof(v);` en sentencia propia). |
+| 3 | `argc-argv-desajuste` | 1 | Se accede a `argv[N]` fuera de lo que garantiza la comprobación previa de `argc`. *"Se compara argc contra \<K\>... Aquí se accede a argv[\<N\>], fuera de lo comprobado."* |
+| 4 | `poll-sizeof` | 1 | `sizeof(...)` como segundo argumento de `poll()` (debe ser el número de descriptores, no un tamaño en bytes). |
+| 5 | `memcpy-direccion-contenedor` | 1 | `memcpy` sobre `&variable` donde `variable` es `std::string`/`std::vector` — vuelca la representación interna, no el contenido. `std::array` queda excluido a propósito (`&arr == arr.data()`, comprobado empíricamente). |
+| 6 | `memcpy-array-overflow` | 1 | `memcpy` con un tamaño literal mayor que el `std::array<T,N>` de destino/origen. |
+| 7 | `memcpy-string-data-prohibido` | 4 | `memcpy` con `std::string.data()` como **destino** — prohibido siempre. Como **origen** (solo lectura) sí está permitido, no requiere `resize()` previo. |
+| 8 | `memcpy-array-direccion-estilo` | 3 | `&array` (siendo `std::array`) como destino/origen de `memcpy` — correcto, pero en esta asignatura se usa siempre `.data()` por consistencia con `std::string`/`std::vector`. |
+| 9 | `signal-kill-args-invertidos` | 1 | Argumentos de `kill()`/`signal()` en el orden equivocado (pid↔señal, o señal↔manejador). Lista de señales verificada contra las cabeceras reales del sistema. |
+| 10 | `sin-port-no-htons` | 2 | Asignación a `sin_port` sin pasar por `htons()`/`std::byteswap`. *"El valor asignado a sin_port no parece correcto. Revísalo antes de entregar."* — sin pista conceptual, a propósito. **Dos excepciones**: (1) la asignación está en una rama de un `if`/`else` sobre *endianness* cuya rama hermana convierte el mismo campo; (2) hay, más adelante en la función, un `if` de *endianness* que convierte el mismo campo (patrón "valor por defecto, sobreescrito solo si hace falta"). La condición de *endianness* se reconoce tanto escrita en línea como a través de una **constante con nombre propio** (`const bool ISLITTLE = (std::endian::native == ...);`). |
+| 11 | `accept-sin-listen` | 2 | `accept()` sobre un socket que no ha llamado antes a `listen()` en la misma función. Mensaje sin pista conceptual. |
+| 12 | `entrada-salida-con-socket-escucha` | 1 y 4 | **Modo 1 (mecánico)**: `read`/`read_n`/`write`/`write_n`/`send`/`recv` sobre el mismo descriptor que se pasó a `accept()` (el socket de escucha), en vez del que `accept()` devuelve. *"\<X\> es el socket que espera conexiones, no el que habla con un cliente concreto..."* **Modo 2 (normativa, nivel 4)**: pasar ese descriptor (o un alias suyo) como argumento a una función **definida por el estudiante en el mismo fichero**, después del `accept()` — se considera un error siempre, sin importar qué haga esa función por dentro. Las funciones de biblioteca (`close`, `poll`, `setsockopt`...) quedan excluidas automáticamente, nunca tienen `function_definition` en el fichero del examen. **Rastrea alias intra-función** en los dos modos (`int aux = sd; read(aux, ...)`). |
+| 13 | `fork-antes-de-accept` | 1 | `fork()` ocurre antes del primer `accept()` en la misma función (solo si hay algún `accept()` presente). |
+| 14 | `zombies-sin-reap` | 1 | `fork()` sin `wait()`/`waitpid()` (fuera de la rama del hijo) ni `signal(SIGCHLD, SIG_IGN)` en la misma función. |
+| 15 | `hijo-sin-terminar` | 1 | La rama del hijo (`if (pid == 0)`) no termina con `exit()`/`return`. Mensaje "grave" si está dentro de un bucle que también hace `fork()`; "suave" en caso contrario. |
+| 16 | `pipe-uso-antes-de-crear` | 1 | Se usa `fd[0]`/`fd[1]` antes de que `pipe(fd)` se haya llamado en ese punto de la función. Cubre `read`/`read_n`/`write`/`write_n`. |
+| 17 | `pipe-extremos-invertidos` | 1 | Escribir en `fd[0]` (extremo de lectura) o leer de `fd[1]` (extremo de escritura) — convención POSIX fija. Cubre `read`/`read_n`/`recv` y `write`/`write_n`/`send`. **Rastrea alias intra-función** (`int fd_lectura = mi_pipe[0]; write_n(fd_lectura, ...);`). |
+| 18 | `io-container-direccion` | 1 | Las 8 funciones de E/S sobre `&variable` (`std::string`/`std::vector`) — vuelca la representación interna, no el contenido. |
+| 19 | `io-array-direccion-estilo` | 3 | `&array` (`std::array`) en las 8 funciones de E/S — correcto, pero se usa siempre `.data()` por consistencia. |
+| 20 | `read-desde-teclado` | 4 | `read(0/STDIN_FILENO, ...)` — prohibido siempre; la entrada por teclado se trata como secuencia de caracteres (`std::cin`/`std::getline`). **Solo C++** — no se aplica a ficheros `.c`, donde `std::cin` no existe y `read()` ahí es correcto. |
+| 21 | `read-n-en-teclado` | 4 | `read_n(0/STDIN_FILENO, ...)` — exige un número exacto de bytes, no tiene sentido para entrada interactiva de longitud variable. **Se aplica igual a C y C++** — `read_n` no es una función de C++, el problema es el mismo en los dos lenguajes (a diferencia de la regla 20). |
+| 22 | `io-string-data-prohibido` | 4 | `std::string.data()` como buffer en `read`/`read_n`/`recv`/`recvfrom` (el string es **destino**) — prohibido. En `write`/`write_n`/`send`/`sendto` (**origen**) está permitido. |
+| 23 | `byteswap-uso-local-incorrecto` | 1 | Variable que **nunca** fue destino de `read`/`read_n`/`recv`/`recvfrom`, usada como tamaño, en una comparación, para avanzar un offset, como desplazamiento en un buffer, o como índice `[X]`, tras un número **impar** de conversiones con `htons`/`ntohs`/`htonl`/`ntohl`/`std::byteswap`. Las variables sí recibidas de la red quedan excluidas — para ellas, impar es correcto. |
+| 24 | `byteswap-comparacion-en-vez-de-asignacion` | 1 | `x == htons(x);` como sentencia completa — comparación en vez de asignación, el resultado se descarta sin efecto. |
+| 25 | `struct-con-contenedor-direccion` | 1 | `&struct` (definido en el fichero) con algún campo `std::string`/`std::vector`, pasado a `memcpy`/las 8 funciones de E/S — vuelca punteros internos del campo, no su contenido. |
+| 26 | `sizeof-argv-elemento` | 1 | `sizeof(argv[i])` — siempre el tamaño de un puntero (`char*`), nunca la longitud de la cadena. Hace falta `strlen(argv[i])`. |
+| 27 | `sizeof-contenedor` | 1 | `sizeof(variable)` con `variable` de tipo `std::string`/`std::vector`/`std::string_view` — da el tamaño del objeto, no del contenido. Hace falta `.size()`. `std::array` excluido a propósito. |
+| 28 | `struct-sin-static-assert` | 1 | `&struct` **plano** (sin `std::string`/`std::vector`) enviado/recibido entero, sin que exista un `static_assert(sizeof(Tipo) == N)` en el fichero — el compilador puede meter *padding* entre campos sin que se note. |
+| 29 | `size-en-vez-de-offset` | 1 | `array.size()` usado para enviar cuando hay una variable de offset asociada con al menos un incremento **no constante** sin usar en el envío. No avisa si todos los incrementos del offset son literales/`sizeof(...)` — podría ser un protocolo de tamaño fijo donde `.size()` es correcto a propósito. |
+| 30 | `size-contenedor-no-byte-sin-aritmetica` | 1 | `contenedor.size()` **a pelo** (sin ninguna aritmética alrededor) como tamaño de `memcpy` o de las 8 funciones de E/S, con elementos que no ocupan 1 byte — `.size()` da el número de elementos, no de bytes. En cuanto hay aritmética (`.size() * sizeof(T)`) no avisa, a propósito. |
