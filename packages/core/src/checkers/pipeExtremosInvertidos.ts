@@ -27,6 +27,25 @@ export interface Finding {
   message: string;
 }
 
+/** Nombre del array de pipe a partir del primer argumento de pipe(...).
+ * Cubre `pipe(fd)` (C-array, el argumento es el identificador) y
+ * `pipe(fd_pipe.data())` (std::array<int,2>, el argumento es `arr.data()`
+ * — muy habitual en el plan nuevo). En ambos casos, lo que sigue en el
+ * fichero es `fd_pipe[0]` / `fd_pipe[1]`, que subscriptLiteral ya
+ * reconoce igual sea C-array o std::array. */
+function pipeArrayNameFromArg(arg: Parser.SyntaxNode | null | undefined): string | null {
+  if (!arg) return null;
+  if (arg.type === "identifier") return arg.text;
+  if (arg.type === "call_expression") {
+    const func = arg.childForFieldName("function");
+    if (func?.type === "field_expression" && func.childForFieldName("field")?.text === "data") {
+      const obj = func.childForFieldName("argument");
+      if (obj?.type === "identifier") return obj.text;
+    }
+  }
+  return null;
+}
+
 function findPipeArrayNames(root: Parser.SyntaxNode): Set<string> {
   const names = new Set<string>();
   function walk(n: Parser.SyntaxNode) {
@@ -34,8 +53,8 @@ function findPipeArrayNames(root: Parser.SyntaxNode): Set<string> {
       const func = n.childForFieldName("function");
       if (func && /(^|::)pipe$/.test(func.text)) {
         const args = n.childForFieldName("arguments");
-        const first = args?.namedChildren[0];
-        if (first?.type === "identifier") names.add(first.text);
+        const name = pipeArrayNameFromArg(args?.namedChildren[0]);
+        if (name) names.add(name);
       }
     }
     for (const child of n.namedChildren) walk(child);
