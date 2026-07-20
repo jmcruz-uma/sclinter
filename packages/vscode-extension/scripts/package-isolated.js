@@ -23,6 +23,7 @@ const { execSync } = require("node:child_process");
 
 const EXT_DIR = path.join(__dirname, "..");
 const CORE_DIR = path.join(__dirname, "..", "..", "core");
+const ROOT_DIR = path.join(__dirname, "..", "..", "..");
 const STAGING = fs.mkdtempSync(path.join(os.tmpdir(), "sclinter-vsix-"));
 
 function copyDir(src, dest) {
@@ -43,6 +44,12 @@ for (const f of ["package.json", "tsconfig.json", ".vscodeignore", "icon.png", "
   const srcPath = path.join(EXT_DIR, f);
   if (fs.existsSync(srcPath)) fs.copyFileSync(srcPath, path.join(STAGING, f));
 }
+// La licencia vive en la raíz del monorepo (única copia, sin duplicar), pero
+// tiene que viajar DENTRO del .vsix: MIT exige conservar el aviso de copyright
+// en las distribuciones, y vsce además avisa si no encuentra un LICENSE. Se
+// copia aquí desde la raíz al staging para que quede empaquetada en la extensión.
+const licenseSrc = path.join(ROOT_DIR, "LICENSE");
+if (fs.existsSync(licenseSrc)) fs.copyFileSync(licenseSrc, path.join(STAGING, "LICENSE"));
 copyDir(path.join(EXT_DIR, "src"), path.join(STAGING, "src"));
 // El sync-core ya habrá dejado src/checkers y src/rules copiados desde
 // core — pero por si acaso se empaqueta sin haber sincronizado antes,

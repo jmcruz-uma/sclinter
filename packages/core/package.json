@@ -4,6 +4,14 @@
   "description": "Motor de detección de sclinter: las 30 reglas y el análisis con tree-sitter. Consumido por @sclinter/cli y por la extensión de VS Code — no se usa solo.",
   "main": "./out/index.js",
   "types": "./out/index.d.ts",
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jmcruz-uma/sclinter.git"
+  },
   "scripts": {
     "build": "tsc -p ./",
     "clean": "rm -rf out"

@@ -8,6 +8,14 @@
     "packages/cli",
     "packages/vscode-extension"
   ],
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jmcruz-uma/sclinter.git"
+  },
   "scripts": {
     "build:core": "npm run build --workspace=packages/core",
     "build:cli": "npm run build --workspace=packages/cli",

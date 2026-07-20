@@ -1,12 +1,18 @@
 {
   "name": "sclinter",
   "displayName": "sclinter",
-  "description": "Catálogo de errores mecánicos típicos de Software de Comunicaciones (UMA) — avisa al guardar/abrir un .cpp, sin IA, sin red.",
+  "description": "Chequeo de errores típicos de Software de Comunicaciones (ETSIT UMA) — avisa al guardar/abrir un .cpp/.c",
   "version": "1.0.4",
-  "publisher": "uma-lenguajes-ciencias-computacion",
+  "publisher": "jmcruz-uma-etsit",
   "icon": "icon.png",
   "engines": {
-    "vscode": "^1.121.0"
+    "vscode": "^1.121.0",
+    "node": ">=20"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jmcruz-uma/sclinter.git"
   },
   "categories": ["Linters"],
   "activationEvents": ["onLanguage:cpp", "onLanguage:c"],
