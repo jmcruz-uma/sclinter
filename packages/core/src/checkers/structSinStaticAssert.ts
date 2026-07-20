@@ -109,7 +109,18 @@ function declaredTypeOf(functionNode: Parser.SyntaxNode, name: string): string |
         while (cur && cur.type !== "identifier") {
           cur = cur.childForFieldName("declarator") ?? cur.namedChildren[0] ?? null;
         }
-        if (cur?.text === name) result = typeNode.text.replace(/\s+/g, "");
+        if (cur?.text === name) {
+          // Declaración combinada `struct T {...} var;`: el nodo `type` es
+          // el struct_specifier ENTERO, cuyo .text sería toda la definición
+          // (cuerpo incluido), no el nombre del tipo. El nombre está en su
+          // hijo `name`. En la forma separada (`T var;`) el `type` ya es un
+          // type_identifier y su .text es directamente el nombre.
+          if (typeNode.type === "struct_specifier" || typeNode.type === "class_specifier") {
+            result = typeNode.childForFieldName("name")?.text.replace(/\s+/g, "") ?? null;
+          } else {
+            result = typeNode.text.replace(/\s+/g, "");
+          }
+        }
       }
     }
     for (const child of n.namedChildren) walk(child);

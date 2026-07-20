@@ -74,7 +74,11 @@ function containsCallTo(node: Parser.SyntaxNode, names: string[]): boolean {
   if (node.type === "call_expression") {
     const func = node.childForFieldName("function");
     if (func) {
-      const bare = func.text.replace(/^.*::/, "");
+      // Se normaliza el espacio en blanco ANTES de recortar el prefijo de
+      // namespace: un estudiante puede escribir `std :: byteswap` con
+      // espacios alrededor de `::`, y sin normalizar, el recorte dejaría
+      // " byteswap" (con espacio inicial) y no casaría con la lista.
+      const bare = func.text.replace(/\s+/g, "").replace(/^.*::/, "");
       if (names.includes(bare)) return true;
     }
   }
@@ -229,6 +233,114 @@ function protegidoPorIfPosteriorDeEndianness(node: Parser.SyntaxNode, field: str
   return protegido;
 }
 
+/** EXCEPCIÓN (patrón real muy común): la conversión se aplica a la
+ * VARIABLE ORIGEN antes de asignarla a sin_port, en vez de al propio
+ * campo sin_port:
+ *   uint16_t puerto = std::stoi(argv[2]);
+ *   if (std::endian::native == std::endian::little) puerto = std::byteswap(puerto);
+ *   dir.sin_port = puerto;     // ya está en orden de red
+ * o directamente `puerto = htons(puerto); dir.sin_port = puerto;`. Si el
+ * valor asignado a sin_port es un identificador simple V y, ANTES en la
+ * misma función, V fue destino de una asignación/declaración cuyo valor
+ * pasa por htons/byteswap, no se avisa. La conversión debe ser ANTERIOR:
+ * si fuera posterior, sin_port se quedaría con el valor crudo (bug real,
+ * debe seguir avisando). */
+function valorYaConvertidoEnVariableOrigen(
+  value: Parser.SyntaxNode,
+  sinPortAssign: Parser.SyntaxNode
+): boolean {
+  let v: Parser.SyntaxNode = value;
+  if (v.type === "parenthesized_expression") v = v.namedChildren[0] ?? v;
+  if (v.type !== "identifier") return false;
+  const name = v.text;
+  const fn = enclosingFunction(sinPortAssign);
+  if (!fn) return false;
+
+  let convertido = false;
+  function walk(n: Parser.SyntaxNode) {
+    if (convertido) return;
+    if (n.startIndex < sinPortAssign.startIndex) {
+      if (n.type === "assignment_expression") {
+        const left = n.childForFieldName("left");
+        const right = n.childForFieldName("right");
+        if (
+          left?.type === "identifier" &&
+          left.text === name &&
+          right &&
+          containsCallTo(right, ["htons", "byteswap"])
+        ) {
+          convertido = true;
+          return;
+        }
+      }
+      if (n.type === "init_declarator") {
+        const decl = n.childForFieldName("declarator");
+        const val = n.childForFieldName("value");
+        if (
+          decl?.type === "identifier" &&
+          decl.text === name &&
+          val &&
+          containsCallTo(val, ["htons", "byteswap"])
+        ) {
+          convertido = true;
+          return;
+        }
+      }
+    }
+    for (const child of n.namedChildren) walk(child);
+  }
+  walk(fn);
+  return convertido;
+}
+
+/** Nombres de funciones DEFINIDAS en el propio fichero (tienen
+ * function_definition), para distinguirlas de las de biblioteca. */
+function funcionesDefinidasEnFichero(root: Parser.SyntaxNode): Set<string> {
+  const names = new Set<string>();
+  function nombreDeDefinicion(fnDef: Parser.SyntaxNode): string | null {
+    let cur: Parser.SyntaxNode | null = fnDef.childForFieldName("declarator");
+    while (cur && cur.type !== "identifier") {
+      cur = cur.childForFieldName("declarator") ?? cur.namedChildren[0] ?? null;
+    }
+    return cur?.type === "identifier" ? cur.text : null;
+  }
+  function walk(n: Parser.SyntaxNode) {
+    if (n.type === "function_definition") {
+      const nombre = nombreDeDefinicion(n);
+      if (nombre) names.add(nombre);
+    }
+    for (const child of n.namedChildren) walk(child);
+  }
+  walk(root);
+  return names;
+}
+
+/** EXCEPCIÓN (patrón real): el valor asignado a sin_port se obtiene de una
+ * función DEFINIDA por el estudiante en el fichero (p.ej.
+ * `dir.sin_port = cambia16(puerto);`). No se puede saber, sin análisis
+ * interprocedural —que esta herramienta no hace a propósito—, si esa
+ * función ya realiza la conversión de orden de bytes. Se calla, coherente
+ * con "ante la duda, silencio antes que ruido". Las funciones de
+ * biblioteca (std::stoi, ntohs...) no tienen function_definition en el
+ * fichero y por tanto NO silencian el aviso. */
+function valorLlamaFuncionPropia(value: Parser.SyntaxNode, fileFns: Set<string>): boolean {
+  let llama = false;
+  function walk(n: Parser.SyntaxNode) {
+    if (llama) return;
+    if (n.type === "call_expression") {
+      const func = n.childForFieldName("function");
+      const bare = func?.text.replace(/\s+/g, "").replace(/^.*::/, "");
+      if (bare && fileFns.has(bare)) {
+        llama = true;
+        return;
+      }
+    }
+    for (const child of n.namedChildren) walk(child);
+  }
+  walk(value);
+  return llama;
+}
+
 const MENSAJE = "El valor asignado a sin_port no parece correcto. Revísalo antes de entregar.";
 
 export function findSinPortNoHtonsIssues(
@@ -236,6 +348,8 @@ export function findSinPortNoHtonsIssues(
   language: Parser.Language
 ): Finding[] {
   const findings: Finding[] = [];
+
+  const fileFns = funcionesDefinidasEnFichero(tree.rootNode);
 
   const assignQuery = language.query(ASSIGN_QUERY);
   for (const match of assignQuery.matches(tree.rootNode)) {
@@ -247,6 +361,8 @@ export function findSinPortNoHtonsIssues(
     if (containsCallTo(value, ["htons", "byteswap"])) continue;
     if (protegidoPorRamaDeEndianness(assign, "sin_port")) continue;
     if (protegidoPorIfPosteriorDeEndianness(assign, "sin_port")) continue;
+    if (valorYaConvertidoEnVariableOrigen(value, assign)) continue;
+    if (valorLlamaFuncionPropia(value, fileFns)) continue;
 
     findings.push({ startIndex: assign.startIndex, endIndex: assign.endIndex, message: MENSAJE });
   }
@@ -261,6 +377,8 @@ export function findSinPortNoHtonsIssues(
     if (containsCallTo(value, ["htons", "byteswap"])) continue;
     if (protegidoPorRamaDeEndianness(pair, "sin_port")) continue;
     if (protegidoPorIfPosteriorDeEndianness(pair, "sin_port")) continue;
+    if (valorYaConvertidoEnVariableOrigen(value, pair)) continue;
+    if (valorLlamaFuncionPropia(value, fileFns)) continue;
 
     findings.push({ startIndex: pair.startIndex, endIndex: pair.endIndex, message: MENSAJE });
   }
