@@ -1,6 +1,7 @@
 node_modules/
 out/
 *.vsix
+CLAUDE.md
 
 # La extensión sincroniza esto desde packages/core en cada build — no
 # se edita a mano y no se versiona por duplicado.

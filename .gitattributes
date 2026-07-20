@@ -1,0 +1,14 @@
+# Sin este fichero, git intenta adivinar si cada fichero es texto o
+# binario, y con formatos menos comunes como .wasm, a veces adivina
+# mal. Si además tienes core.autocrlf activado (habitual en Windows),
+# eso puede hacer que git piense que un binario "cambió" sin que nadie
+# lo haya tocado, porque compara aplicando un filtro de texto que no
+# le corresponde. Marcarlo aquí, explícito, elimina la ambigüedad.
+
+*.wasm binary
+*.png binary
+*.vsix binary
+
+# Normaliza el resto a LF en el repositorio, independientemente del
+# sistema operativo de quien haga el commit.
+* text=auto eol=lf
