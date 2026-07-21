@@ -30,6 +30,7 @@ import { findStructSinStaticAssertIssues } from "../checkers/structSinStaticAsse
 import { findSizeEnVezDeOffsetIssues } from "../checkers/sizeEnVezDeOffset";
 import { findSizeContenedorNoByteSinAritmeticaIssues } from "../checkers/sizeContenedorNoByteSinAritmetica";
 import { findIoVectorDataIssues } from "../checkers/ioVectorData";
+import { findErrnoAsignacionEnVezDeComparacionIssues } from "../checkers/errnoAsignacionEnVezDeComparacion";
 
 export interface Rule {
   id: string;
@@ -207,5 +208,10 @@ export const RULES: Rule[] = [
     id: "io-vector-data",
     titulo: "read/recv/memcpy sobre vector<char|uint8_t|byte>.data() estando el vector vacío (sin resize/tamaño) — UB",
     run: findIoVectorDataIssues,
+  },
+  {
+    id: "errno-asignacion-en-vez-de-comparacion",
+    titulo: "errno = X dentro de una condición o booleana (se quería errno == X); asignar a errno fuera de una guarda sí es legítimo",
+    run: findErrnoAsignacionEnVezDeComparacionIssues,
   },
 ];
