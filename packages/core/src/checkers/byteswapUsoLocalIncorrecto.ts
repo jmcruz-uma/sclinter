@@ -151,6 +151,12 @@ function toggle(o: Byteorder): Byteorder {
 interface Ctx {
   readBufs: Set<string>;
   refParams: Map<string, Set<number>>;
+  /** Cuerpo de cada función definida en el fichero, por nombre. Permite
+   * calcular el RESUMEN del efecto de un callee sobre su parámetro. */
+  funcs: Map<string, Parser.SyntaxNode>;
+  /** Caché de resúmenes `nombreFuncion#posicionParametro`. "en-curso"
+   * marca una recursión en marcha (recursión mutua → desconocido). */
+  resumenes: Map<string, Resumen | "en-curso">;
   /** Nodo del uso que se está evaluando, para descartar mutaciones que
    * viven en una rama mutuamente excluyente con él. */
   useNode?: Parser.SyntaxNode;
@@ -201,25 +207,288 @@ function nonConstRefParamsByFunction(root: Parser.SyntaxNode): Map<string, Set<n
   return map;
 }
 
+/** Cada función DEFINIDA en el fichero, por nombre. Sin distinguir
+ * sobrecargas (misma limitación que `nonConstRefParamsByFunction`). */
+function functionDefinitionsByName(root: Parser.SyntaxNode): Map<string, Parser.SyntaxNode> {
+  const map = new Map<string, Parser.SyntaxNode>();
+  function walk(n: Parser.SyntaxNode) {
+    if (n.type === "function_definition") {
+      const name = functionDeclName(n.childForFieldName("declarator"));
+      if (name && !map.has(name)) map.set(name, n);
+    }
+    for (const child of n.namedChildren) walk(child);
+  }
+  walk(root);
+  return map;
+}
+
+// ---------------------------------------------------------------------------
+// Resúmenes de función (trazado interprocedural acotado)
+// ---------------------------------------------------------------------------
+//
+// El límite general del proyecto es el análisis intra-función, y sigue en pie
+// (ver CLAUDE.md). Aquí se hace una excepción MUY acotada, y conviene entender
+// por qué no la contradice: la regla de `entradaSalidaConSocketEscucha` no
+// puede ser interprocedural porque "¿es peligroso este descriptor?" depende de
+// QUIÉN llama — no es una propiedad de la función. En cambio "¿esta función
+// rellena su parámetro desde la red? ¿se lo convierte?" SÍ es una propiedad
+// estática del callee, idéntica para todos sus llamantes. Son problemas
+// distintos, y solo el segundo admite un resumen.
+//
+// Por eso, en vez de entrar recursivamente en el callee desde cada sitio de
+// llamada, se calcula UNA vez por (función, posición de parámetro) un resumen
+// del efecto sobre ese parámetro por referencia no-const, y se cachea.
+//
+// REGLA DE ORO: esto solo puede REFINAR el `unknown` que hoy hace callar a la
+// regla; nunca inventar certeza. Ante la mínima ambigüedad (unas ramas
+// rellenan y otras no, el parámetro se pasa a algo opaco, se le hace algo que
+// no modelamos...) el resumen es `desconocido` y se sigue callando, igual que
+// hoy. Así el cambio es monótono respecto al comportamiento anterior salvo
+// donde hay certeza.
+
+type Resumen =
+  /** El callee no toca el parámetro: la llamada es irrelevante y se ignora. */
+  | { kind: "intacto" }
+  /** El orden final es el ENTRANTE alternado `swaps` veces (`x = byteswap(x)`). */
+  | { kind: "relativo"; swaps: number }
+  /** El orden final no depende del entrante (`x = htons(strlen(s))`, o lectura de red). */
+  | { kind: "absoluto"; orden: Orden }
+  | { kind: "desconocido" };
+
+function mismoResumen(a: Resumen, b: Resumen): boolean {
+  if (a.kind !== b.kind) return false;
+  if (a.kind === "relativo" && b.kind === "relativo") return a.swaps === b.swaps;
+  if (a.kind === "absoluto" && b.kind === "absoluto") {
+    return a.orden.order === b.orden.order && a.orden.swaps === b.orden.swaps;
+  }
+  return true;
+}
+
+/** Nombre del parámetro en la posición `pos` de una función definida.
+ * OJO (comprobado sobre el árbol real): `reference_declarator` NO tiene campo
+ * `declarator`; su identificador es `namedChildren[0]`. */
+function nombreParametro(fnDef: Parser.SyntaxNode, pos: number): string | null {
+  const declarator = fnDef.childForFieldName("declarator");
+  const paramList =
+    declarator?.childForFieldName("parameters") ??
+    declarator?.namedChildren.find((c) => c.type === "parameter_list");
+  const pd = paramList?.namedChildren.filter((c) => c.type === "parameter_declaration")[pos];
+  if (!pd) return null;
+  return functionDeclName(pd.childForFieldName("declarator"));
+}
+
+/** ¿Hay en el cuerpo ALGUNA aparición de `param` que pueda modificarlo?
+ *
+ * Deliberadamente sobre-aproximada: en la duda dice `true`, lo que impide
+ * concluir `intacto` y deja el resumen en `desconocido` → silencio, que es el
+ * comportamiento actual. Solo el `false` (nadie lo toca) es una afirmación. */
+function tocaElParametro(
+  cuerpo: Parser.SyntaxNode,
+  param: string,
+  refParams: Map<string, Set<number>>
+): boolean {
+  // Métodos que no pueden modificar el objeto. Cualquier otro método sobre el
+  // parámetro (data(), resize(), push_back()...) cuenta como modificación.
+  const METODOS_SOLO_LECTURA = ["size", "length", "empty", "c_str"];
+  let toca = false;
+  function walk(n: Parser.SyntaxNode) {
+    if (toca) return;
+    // x = ..., x += ..., x.campo = ..., x[i] = ...
+    if (n.type === "assignment_expression") {
+      const left = n.childForFieldName("left");
+      if (left && bufferBaseName(left) === param) toca = true;
+    }
+    // ++x / x--
+    if (n.type === "update_expression") {
+      const arg = n.childForFieldName("argument") ?? n.namedChildren[0];
+      if (arg && bufferBaseName(arg) === param) toca = true;
+    }
+    // &x, &x.campo — se toma su dirección: podría escribirse a través de ella.
+    if (n.type === "pointer_expression" && bufferBaseName(n) === param) toca = true;
+    // auto& r = x;  /  auto* p = x;  — se crea un alias mutable.
+    if (n.type === "init_declarator") {
+      const d = n.childForFieldName("declarator");
+      const v = n.childForFieldName("value");
+      if (
+        (d?.type === "reference_declarator" || d?.type === "pointer_declarator") &&
+        v &&
+        anyIdentifierIn(v, new Set([param]))
+      ) {
+        toca = true;
+      }
+    }
+    if (n.type === "call_expression") {
+      const func = n.childForFieldName("function");
+      // x.metodo(...) con un método que no sea de solo lectura.
+      if (func?.type === "field_expression") {
+        const metodo = func.childForFieldName("field")?.text;
+        const obj = func.childForFieldName("argument");
+        if (obj && bufferBaseName(obj) === param && !METODOS_SOLO_LECTURA.includes(metodo ?? "")) {
+          toca = true;
+        }
+      }
+      // Se lo pasa a OTRA función propia en una posición por referencia
+      // no-const: esa podría rellenarlo (se trata aparte, como desconocido).
+      const b = bare(func);
+      const positions = b ? refParams.get(b) : undefined;
+      if (positions) {
+        const args = n.childForFieldName("arguments")?.namedChildren ?? [];
+        for (let i = 0; i < args.length; i++) {
+          if (positions.has(i) && bufferBaseName(args[i]) === param) toca = true;
+        }
+      }
+    }
+    for (const child of n.namedChildren) walk(child);
+  }
+  walk(cuerpo);
+  return toca;
+}
+
+/** Efecto de una expresión (el RHS de una asignación al parámetro) sobre el
+ * orden de bytes, distinguiendo si depende del valor ENTRANTE o no. */
+function efectoDeExpr(
+  calleeFn: Parser.SyntaxNode,
+  expr: Parser.SyntaxNode,
+  index: number,
+  ctx: Ctx,
+  param: string,
+  depth: number
+): Resumen {
+  if (depth > 40) return { kind: "desconocido" };
+  let e = expr;
+  while (e.type === "parenthesized_expression" || e.type === "cast_expression") {
+    const sig = e.childForFieldName("value") ?? e.namedChildren[e.namedChildren.length - 1];
+    if (!sig) break;
+    e = sig;
+  }
+  const swapArg = isSwapCall(e);
+  if (swapArg) {
+    const r = efectoDeExpr(calleeFn, swapArg, index, ctx, param, depth + 1);
+    if (r.kind === "relativo") return { kind: "relativo", swaps: r.swaps + 1 };
+    if (r.kind === "absoluto") {
+      return {
+        kind: "absoluto",
+        orden: { order: toggle(r.orden.order), swaps: r.orden.swaps + 1 },
+      };
+    }
+    return { kind: "desconocido" };
+  }
+  if (e.type === "identifier" && e.text === param) {
+    // Es el propio parámetro. Solo es "el valor entrante" si no lo ha
+    // modificado nada antes dentro del callee; si sí, la cadena es más
+    // complicada de lo que modelamos → desconocido.
+    const previa = mostRecentMutation(calleeFn, param, index, ctx);
+    return previa ? { kind: "desconocido" } : { kind: "relativo", swaps: 0 };
+  }
+  const orden = analyzeExpr(calleeFn, e, index, ctx, depth + 1);
+  if (orden.order === "unknown") return { kind: "desconocido" };
+  return { kind: "absoluto", orden };
+}
+
+function efectoDeMutacion(
+  calleeFn: Parser.SyntaxNode,
+  param: string,
+  m: Mutacion,
+  ctx: Ctx,
+  depth: number
+): Resumen {
+  const DE_RED: Resumen = { kind: "absoluto", orden: { order: "network", swaps: 0 } };
+  if (m.kind === "read") return DE_RED;
+  if (m.kind === "memcpy") {
+    const src = m.node.childForFieldName("arguments")?.namedChildren[1];
+    if (src && anyIdentifierIn(src, ctx.readBufs)) return DE_RED;
+    return { kind: "desconocido" };
+  }
+  // Se lo pasa a su vez a otra función por referencia: no lo perseguimos.
+  if (m.kind === "refpass") return { kind: "desconocido" };
+  return efectoDeExpr(calleeFn, m.node, m.pos, ctx, param, depth);
+}
+
+/** Resumen del efecto de `fname` sobre su parámetro por referencia no-const
+ * en la posición `argPos`. Cacheado; recursión acotada. */
+function resumenParametro(ctx: Ctx, fname: string, argPos: number, depth: number): Resumen {
+  const clave = `${fname}#${argPos}`;
+  const cacheado = ctx.resumenes.get(clave);
+  if (cacheado) return cacheado === "en-curso" ? { kind: "desconocido" } : cacheado;
+  if (depth > 8) return { kind: "desconocido" };
+
+  const calleeFn = ctx.funcs.get(fname);
+  const param = calleeFn ? nombreParametro(calleeFn, argPos) : null;
+  const cuerpo = calleeFn?.childForFieldName("body");
+  if (!calleeFn || !param || !cuerpo) return { kind: "desconocido" };
+
+  ctx.resumenes.set(clave, "en-curso");
+  const ctxCallee: Ctx = { ...ctx, readBufs: readBufferNames(calleeFn), useNode: undefined };
+
+  let r: Resumen;
+  if (!tocaElParametro(cuerpo, param, ctx.refParams)) {
+    r = { kind: "intacto" };
+  } else {
+    const muts = collectMutations(calleeFn, param, calleeFn.endIndex, ctxCallee);
+    if (muts.length === 0) {
+      // Lo toca de una forma que no modelamos como mutación → sin certeza.
+      r = { kind: "desconocido" };
+    } else {
+      const efectos = muts.map((m) => efectoDeMutacion(calleeFn, param, m, ctxCallee, depth + 1));
+      r = efectos.every((e) => mismoResumen(e, efectos[0])) ? efectos[0] : { kind: "desconocido" };
+    }
+  }
+
+  // FASE ACTUAL: el caso "lo rellena de red Y ADEMÁS lo convierte" (el helper
+  // del enunciado, que entrega el dato "ya en formato nativo") se queda en
+  // `desconocido`, y conviene saber POR QUÉ, porque no es por esta línea.
+  //
+  // Ese patrón son DOS mutaciones en secuencia (`memcpy(&seq,...)` y luego
+  // `seq = byteswap(seq)`), y el bucle de arriba exige que todas las
+  // mutaciones COINCIDAN. Eso es lo correcto para alternativas —ramas que se
+  // excluyen— pero no compone secuencias, así que discrepan y el resumen sale
+  // `desconocido`. Ahí es donde queda aplazado el DOBLE byteswap (helper
+  // convierte + llamante vuelve a convertir → otra vez orden de red).
+  //
+  // Habilitarlo NO es quitar esta guarda: exige calcular el resumen siguiendo
+  // la ÚLTIMA mutación hacia atrás —encadenando, como hace `analyze` dentro de
+  // una función— en vez de exigir acuerdo. Y antes hay que resolver la
+  // evidencia: el relleno suele ser condicional (`if (revents & POLLIN)`) y
+  // `funcs`/`refParams` se indexan solo por nombre, cosas que hoy solo
+  // producen silencio de más y entonces producirían acusaciones falsas.
+  //
+  // Esta guarda cubre el resto: un resumen de UNA sola mutación que deja el
+  // parámetro en orden de host tras convertir (`v = htons(strlen(s))`).
+  if (r.kind === "absoluto" && r.orden.order === "host" && r.orden.swaps >= 1) {
+    r = { kind: "desconocido" };
+  }
+
+  ctx.resumenes.set(clave, r);
+  return r;
+}
+
 /** ¿Se pasó `name` como argumento en una posición de referencia no-const de
  * una función propia, en una posición ANTERIOR a beforeIndex? Si es así, esa
- * función pudo rellenarlo (p.ej. de la red) y su orden es desconocido. */
+ * función pudo rellenarlo (p.ej. de la red) y su orden es desconocido.
+ * Se ignoran las llamadas cuyo resumen demuestra que no tocan el parámetro. */
 function wasRefPassedBefore(
   fn: Parser.SyntaxNode,
   name: string,
   beforeIndex: number,
-  refParams: Map<string, Set<number>>
+  ctx: Ctx
 ): boolean {
   let found = false;
   function walk(n: Parser.SyntaxNode) {
     if (found) return;
     if (n.type === "call_expression" && n.startIndex < beforeIndex) {
       const fname = bare(n.childForFieldName("function"));
-      const positions = fname ? refParams.get(fname) : undefined;
-      if (positions) {
+      const positions = fname ? ctx.refParams.get(fname) : undefined;
+      if (positions && fname) {
         const args = n.childForFieldName("arguments")?.namedChildren ?? [];
         for (let i = 0; i < args.length; i++) {
           if (positions.has(i) && args[i].type === "identifier" && args[i].text === name) {
+            // Si el resumen demuestra que el callee no toca ese parámetro,
+            // la llamada no puede haber cambiado nada: se ignora. En los
+            // demás casos se mantiene el desconocimiento — aquí `name` es el
+            // objeto base de un campo (`mensaje` en `mensaje.num`) y el
+            // resumen es del objeto entero, granularidad demasiado gruesa
+            // para dar por bueno un veredicto concreto.
+            if (resumenParametro(ctx, fname, i, 0).kind === "intacto") continue;
             found = true;
             return;
           }
@@ -275,28 +544,39 @@ function ramasMutuamenteExcluyentes(mut: Parser.SyntaxNode, use: Parser.SyntaxNo
   return false;
 }
 
-type Mutacion = { kind: "read" | "memcpy" | "assign" | "refpass"; node: Parser.SyntaxNode; pos: number };
+type Mutacion =
+  | { kind: "read" | "memcpy" | "assign"; node: Parser.SyntaxNode; pos: number }
+  /** `callee`/`argPos` identifican a qué parámetro se pasó, para poder pedir
+   * su RESUMEN en vez de rendirse con un `unknown` genérico. */
+  | { kind: "refpass"; node: Parser.SyntaxNode; pos: number; callee: string; argPos: number };
 
-/** Mutación más reciente de `name` con posición < beforeIndex:
+/** Todas las mutaciones de `name` con posición < beforeIndex:
  *  - 'read'    : name fue destino de una lectura de red → empieza en orden de red.
  *  - 'memcpy'  : name se extrajo con memcpy(&name, ...) de un buffer leído de red.
  *  - 'assign'  : name = RHS (o declaración con inicializador) → hereda de RHS.
- *  - 'refpass' : name se pasó por referencia no-const a una función propia → orden desconocido.
- * Devuelve el nodo relevante (RHS para 'assign', la llamada para los demás). */
-function mostRecentMutation(
+ *  - 'refpass' : name se pasó por referencia no-const a una función propia.
+ * El nodo es el RHS para 'assign' y la llamada para los demás.
+ *
+ * Las llamadas cuyo resumen dice `intacto` NO generan mutación: el callee no
+ * toca el parámetro, así que la llamada no debe enmascarar una mutación
+ * anterior que sí importa. */
+function collectMutations(
   fn: Parser.SyntaxNode,
   name: string,
   beforeIndex: number,
   ctx: Ctx
-): Mutacion | null {
+): Mutacion[] {
   const refParams = ctx.refParams;
-  let best: Mutacion | null = null;
+  const encontradas: Mutacion[] = [];
   function consider(cand: Mutacion) {
     if (cand.pos >= beforeIndex) return;
     // Una mutación en una rama hermana del uso nunca se ejecutó con él:
     // no puede haber cambiado el valor que se está evaluando.
     if (ctx.useNode && ramasMutuamenteExcluyentes(cand.node, ctx.useNode)) return;
-    if (!best || cand.pos > best.pos) best = cand;
+    if (cand.kind === "refpass") {
+      if (resumenParametro(ctx, cand.callee, cand.argPos, 0).kind === "intacto") return;
+    }
+    encontradas.push(cand);
   }
   function walk(n: Parser.SyntaxNode) {
     if (n.type === "call_expression") {
@@ -310,14 +590,14 @@ function mostRecentMutation(
         const dst = args?.namedChildren[0];
         if (dst && identOf(dst) === name) consider({ kind: "memcpy", node: n, pos: n.startIndex });
       }
-      // Paso por referencia no-const a una función propia: pudo rellenar
-      // `name` (p.ej. de la red) → su orden pasa a ser desconocido.
+      // Paso por referencia no-const a una función propia: el efecto sobre
+      // `name` lo decide el RESUMEN de ese parámetro del callee.
       const positions = b ? refParams.get(b) : undefined;
-      if (positions) {
+      if (positions && b) {
         const as = args?.namedChildren ?? [];
         for (let i = 0; i < as.length; i++) {
           if (positions.has(i) && as[i].type === "identifier" && as[i].text === name) {
-            consider({ kind: "refpass", node: n, pos: n.startIndex });
+            consider({ kind: "refpass", node: n, pos: n.startIndex, callee: b, argPos: i });
           }
         }
       }
@@ -339,6 +619,20 @@ function mostRecentMutation(
     for (const child of n.namedChildren) walk(child);
   }
   walk(fn);
+  return encontradas;
+}
+
+/** La mutación más reciente de `name` anterior a `beforeIndex`. */
+function mostRecentMutation(
+  fn: Parser.SyntaxNode,
+  name: string,
+  beforeIndex: number,
+  ctx: Ctx
+): Mutacion | null {
+  let best: Mutacion | null = null;
+  for (const m of collectMutations(fn, name, beforeIndex, ctx)) {
+    if (!best || m.pos > best.pos) best = m;
+  }
   return best;
 }
 
@@ -355,7 +649,22 @@ function analyze(
   const m = mostRecentMutation(fn, name, index, ctx);
   if (!m) return HOST0; // parámetro / declaración con origen local / sin rastro → orden de host
   if (m.kind === "read") return { order: "network", swaps: 0 };
-  if (m.kind === "refpass") return UNKNOWN0; // pudo rellenarlo una función propia → desconocido
+  if (m.kind === "refpass") {
+    // El callee tocó el parámetro (si no, `collectMutations` ya lo habría
+    // descartado). Su RESUMEN decide; `desconocido` mantiene el silencio
+    // que había antes de existir los resúmenes.
+    const r = resumenParametro(ctx, m.callee, m.argPos, 0);
+    if (r.kind === "absoluto") return r.orden;
+    if (r.kind === "relativo") {
+      // El callee alternó el orden del valor ENTRANTE: hay que saber en qué
+      // orden entró, y eso se resuelve donde siempre, en el llamante.
+      const previo = analyze(fn, name, m.pos, ctx, depth + 1);
+      let order = previo.order;
+      for (let i = 0; i < r.swaps; i++) order = toggle(order);
+      return { order, swaps: previo.swaps + r.swaps };
+    }
+    return UNKNOWN0;
+  }
   if (m.kind === "memcpy") {
     const src = m.node.childForFieldName("arguments")?.namedChildren[1];
     if (src && anyIdentifierIn(src, ctx.readBufs)) return { order: "network", swaps: 0 };
@@ -390,7 +699,7 @@ function analyzeExpr(
     if (base && ctx.readBufs.has(base)) return { order: "network", swaps: 0 };
     // Si el objeto se pasó por referencia no-const a una función propia (que
     // pudo rellenarlo, p.ej. de la red en un helper) → orden desconocido.
-    if (base && wasRefPassedBefore(fn, base, index, ctx.refParams)) return UNKNOWN0;
+    if (base && wasRefPassedBefore(fn, base, index, ctx)) return UNKNOWN0;
   }
   // strlen(...), .size(), literales, argc, aritmética local... → orden de host, 0 conversiones.
   return HOST0;
@@ -431,12 +740,15 @@ export function findByteswapUsoLocalIncorrectoIssues(
   const findings: Finding[] = [];
 
   // Posiciones de parámetro por referencia no-const de cada función propia
-  // del fichero — se calcula una vez y es común a todas las funciones.
+  // del fichero, y las propias definiciones — se calculan una vez y son
+  // comunes a todas las funciones, igual que la caché de resúmenes.
   const refParams = nonConstRefParamsByFunction(tree.rootNode);
+  const funcs = functionDefinitionsByName(tree.rootNode);
+  const resumenes = new Map<string, Resumen | "en-curso">();
 
   function walkFunctions(fn: Parser.SyntaxNode) {
     if (fn.type === "function_definition") {
-      const ctx: Ctx = { readBufs: readBufferNames(fn), refParams };
+      const ctx: Ctx = { readBufs: readBufferNames(fn), refParams, funcs, resumenes };
 
       function walk(n: Parser.SyntaxNode) {
         // 1) tercer argumento de memcpy/read_n/write_n
