@@ -277,34 +277,36 @@ function nombreParametro(fnDef: Parser.SyntaxNode, pos: number): string | null {
   return functionDeclName(pd.childForFieldName("declarator"));
 }
 
-/** ¿Hay en el cuerpo ALGUNA aparición de `param` que pueda modificarlo?
+/** TODAS las apariciones de `param` en el cuerpo que podrían modificarlo.
  *
- * Deliberadamente sobre-aproximada: en la duda dice `true`, lo que impide
- * concluir `intacto` y deja el resumen en `desconocido` → silencio, que es el
- * comportamiento actual. Solo el `false` (nadie lo toca) es una afirmación. */
-function tocaElParametro(
+ * Deliberadamente sobre-aproximada: ante la duda incluye la aparición. Tiene
+ * dos usos, y en ambos el exceso empuja hacia el silencio:
+ *  - lista vacía  → nadie lo toca → resumen `intacto` (la única afirmación).
+ *  - lista no vacía → cada aparición debe quedar CUBIERTA por una mutación de
+ *    las que sí sabemos interpretar; si sobra alguna, el resumen se calcularía
+ *    sobre media película, así que se devuelve `desconocido`. */
+function aparicionesModificadoras(
   cuerpo: Parser.SyntaxNode,
   param: string,
   refParams: Map<string, Set<number>>
-): boolean {
+): Parser.SyntaxNode[] {
   // Métodos que no pueden modificar el objeto. Cualquier otro método sobre el
   // parámetro (data(), resize(), push_back()...) cuenta como modificación.
   const METODOS_SOLO_LECTURA = ["size", "length", "empty", "c_str"];
-  let toca = false;
+  const apariciones: Parser.SyntaxNode[] = [];
   function walk(n: Parser.SyntaxNode) {
-    if (toca) return;
     // x = ..., x += ..., x.campo = ..., x[i] = ...
     if (n.type === "assignment_expression") {
       const left = n.childForFieldName("left");
-      if (left && bufferBaseName(left) === param) toca = true;
+      if (left && bufferBaseName(left) === param) apariciones.push(n);
     }
     // ++x / x--
     if (n.type === "update_expression") {
       const arg = n.childForFieldName("argument") ?? n.namedChildren[0];
-      if (arg && bufferBaseName(arg) === param) toca = true;
+      if (arg && bufferBaseName(arg) === param) apariciones.push(n);
     }
     // &x, &x.campo — se toma su dirección: podría escribirse a través de ella.
-    if (n.type === "pointer_expression" && bufferBaseName(n) === param) toca = true;
+    if (n.type === "pointer_expression" && bufferBaseName(n) === param) apariciones.push(n);
     // auto& r = x;  /  auto* p = x;  — se crea un alias mutable.
     if (n.type === "init_declarator") {
       const d = n.childForFieldName("declarator");
@@ -314,7 +316,7 @@ function tocaElParametro(
         v &&
         anyIdentifierIn(v, new Set([param]))
       ) {
-        toca = true;
+        apariciones.push(n);
       }
     }
     if (n.type === "call_expression") {
@@ -324,7 +326,7 @@ function tocaElParametro(
         const metodo = func.childForFieldName("field")?.text;
         const obj = func.childForFieldName("argument");
         if (obj && bufferBaseName(obj) === param && !METODOS_SOLO_LECTURA.includes(metodo ?? "")) {
-          toca = true;
+          apariciones.push(n);
         }
       }
       // Se lo pasa a OTRA función propia en una posición por referencia
@@ -334,14 +336,14 @@ function tocaElParametro(
       if (positions) {
         const args = n.childForFieldName("arguments")?.namedChildren ?? [];
         for (let i = 0; i < args.length; i++) {
-          if (positions.has(i) && bufferBaseName(args[i]) === param) toca = true;
+          if (positions.has(i) && bufferBaseName(args[i]) === param) apariciones.push(n);
         }
       }
     }
     for (const child of n.namedChildren) walk(child);
   }
   walk(cuerpo);
-  return toca;
+  return apariciones;
 }
 
 /** Efecto de una expresión (el RHS de una asignación al parámetro) sobre el
@@ -421,12 +423,21 @@ function resumenParametro(ctx: Ctx, fname: string, argPos: number, depth: number
   const ctxCallee: Ctx = { ...ctx, readBufs: readBufferNames(calleeFn), useNode: undefined };
 
   let r: Resumen;
-  if (!tocaElParametro(cuerpo, param, ctx.refParams)) {
+  const apariciones = aparicionesModificadoras(cuerpo, param, ctx.refParams);
+  if (apariciones.length === 0) {
     r = { kind: "intacto" };
   } else {
     const muts = collectMutations(calleeFn, param, calleeFn.endIndex, ctxCallee);
-    if (muts.length === 0) {
-      // Lo toca de una forma que no modelamos como mutación → sin certeza.
+    // Nuestra detección de mutaciones es INCOMPLETA: hay formas de escribir un
+    // parámetro que no modelamos (`mempcpy`, a través de un puntero, un campo
+    // suelto, un método del contenedor...). Mientras el resumen solo servía
+    // para callar, eso daba como mucho silencio de más. En cuanto sirve para
+    // dar un veredicto, un callee con DOS escrituras —una que reconocemos y
+    // otra que no— nos haría concluir sobre media película. Así que se exige
+    // que toda aparición modificadora caiga dentro de una mutación conocida;
+    // si sobra una sola, no hay resumen.
+    const cubiertas = apariciones.every((a) => muts.some((m) => contiene(m.cover, a)));
+    if (!cubiertas) {
       r = { kind: "desconocido" };
     } else {
       const efectos = muts.map((m) => efectoDeMutacion(calleeFn, param, m, ctxCallee, depth + 1));
@@ -544,11 +555,22 @@ function ramasMutuamenteExcluyentes(mut: Parser.SyntaxNode, use: Parser.SyntaxNo
   return false;
 }
 
+// `cover` es la sentencia/llamada COMPLETA que produce la mutación (`node` es
+// solo el RHS en el caso 'assign'). Sirve para comprobar que cada aparición
+// modificadora del parámetro cae dentro de alguna mutación que sí sabemos
+// interpretar — ver `aparicionesModificadoras`.
 type Mutacion =
-  | { kind: "read" | "memcpy" | "assign"; node: Parser.SyntaxNode; pos: number }
+  | { kind: "read" | "memcpy" | "assign"; node: Parser.SyntaxNode; pos: number; cover: Parser.SyntaxNode }
   /** `callee`/`argPos` identifican a qué parámetro se pasó, para poder pedir
    * su RESUMEN en vez de rendirse con un `unknown` genérico. */
-  | { kind: "refpass"; node: Parser.SyntaxNode; pos: number; callee: string; argPos: number };
+  | {
+      kind: "refpass";
+      node: Parser.SyntaxNode;
+      pos: number;
+      cover: Parser.SyntaxNode;
+      callee: string;
+      argPos: number;
+    };
 
 /** Todas las mutaciones de `name` con posición < beforeIndex:
  *  - 'read'    : name fue destino de una lectura de red → empieza en orden de red.
@@ -584,11 +606,11 @@ function collectMutations(
       const args = n.childForFieldName("arguments");
       if (b && READ_FUNCS.includes(b)) {
         const buf = args?.namedChildren[1];
-        if (buf && identOf(buf) === name) consider({ kind: "read", node: n, pos: n.startIndex });
+        if (buf && identOf(buf) === name) consider({ kind: "read", node: n, pos: n.startIndex, cover: n });
       }
       if (b === "memcpy") {
         const dst = args?.namedChildren[0];
-        if (dst && identOf(dst) === name) consider({ kind: "memcpy", node: n, pos: n.startIndex });
+        if (dst && identOf(dst) === name) consider({ kind: "memcpy", node: n, pos: n.startIndex, cover: n });
       }
       // Paso por referencia no-const a una función propia: el efecto sobre
       // `name` lo decide el RESUMEN de ese parámetro del callee.
@@ -597,7 +619,7 @@ function collectMutations(
         const as = args?.namedChildren ?? [];
         for (let i = 0; i < as.length; i++) {
           if (positions.has(i) && as[i].type === "identifier" && as[i].text === name) {
-            consider({ kind: "refpass", node: n, pos: n.startIndex, callee: b, argPos: i });
+            consider({ kind: "refpass", node: n, pos: n.startIndex, cover: n, callee: b, argPos: i });
           }
         }
       }
@@ -606,14 +628,14 @@ function collectMutations(
       const decl = n.childForFieldName("declarator");
       const value = n.childForFieldName("value");
       if (decl?.type === "identifier" && decl.text === name && value) {
-        consider({ kind: "assign", node: value, pos: n.startIndex });
+        consider({ kind: "assign", node: value, pos: n.startIndex, cover: n });
       }
     }
     if (n.type === "assignment_expression" && n.childForFieldName("operator")?.text === "=") {
       const left = n.childForFieldName("left");
       const right = n.childForFieldName("right");
       if (left?.type === "identifier" && left.text === name && right) {
-        consider({ kind: "assign", node: right, pos: n.startIndex });
+        consider({ kind: "assign", node: right, pos: n.startIndex, cover: n });
       }
     }
     for (const child of n.namedChildren) walk(child);
