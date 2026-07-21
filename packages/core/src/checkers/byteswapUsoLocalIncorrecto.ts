@@ -151,6 +151,9 @@ function toggle(o: Byteorder): Byteorder {
 interface Ctx {
   readBufs: Set<string>;
   refParams: Map<string, Set<number>>;
+  /** Nodo del uso que se está evaluando, para descartar mutaciones que
+   * viven en una rama mutuamente excluyente con él. */
+  useNode?: Parser.SyntaxNode;
 }
 
 /** ¿Es este parámetro una referencia NO-const (`T&` sin `const`)? Una
@@ -229,6 +232,49 @@ function wasRefPassedBefore(
   return found;
 }
 
+/** ¿El rango de `a` contiene al de `n`? */
+function contiene(a: Parser.SyntaxNode, n: Parser.SyntaxNode): boolean {
+  return n.startIndex >= a.startIndex && n.endIndex <= a.endIndex;
+}
+
+/** Rama de `ifStmt` en la que cae `node`: "cons" (then), "alt" (else, que
+ * en una cadena else-if envuelve al if siguiente CON su condición) o null. */
+function ramaDe(ifStmt: Parser.SyntaxNode, node: Parser.SyntaxNode): "cons" | "alt" | null {
+  const cons = ifStmt.childForFieldName("consequence");
+  const alt = ifStmt.childForFieldName("alternative");
+  if (cons && contiene(cons, node)) return "cons";
+  if (alt && contiene(alt, node)) return "alt";
+  return null;
+}
+
+/** ¿Están la mutación y el uso en ramas DISTINTAS del MISMO if/else
+ * (incluidas cadenas else-if)? Entonces nunca se ejecutan las dos, y esa
+ * mutación no puede haber afectado al valor que se usa: hay que ignorarla.
+ *
+ * Caso real que motivó esto (examen): en la rama `if` se reconvierte la
+ * longitud a orden de red para enviarla, y en el `else if` hermano se
+ * compara la misma variable — que ahí sigue en orden de host, porque esa
+ * rama no se ejecutó. Antes se avisaba en el `else if` (falso positivo).
+ *
+ * IMPORTANTE — es una comprobación puramente LÉXICA de ancestros, no un
+ * modelado de flujo de control: solo descarta ramas hermanas del mismo
+ * if/else. Una mutación dentro de un `if` cuyo uso viene DESPUÉS del
+ * if completo sigue contando (patrón `if(little) x = byteswap(x);` y
+ * luego usar x, que sí es un bug real y debe seguir avisando). */
+function ramasMutuamenteExcluyentes(mut: Parser.SyntaxNode, use: Parser.SyntaxNode): boolean {
+  let n: Parser.SyntaxNode | null = mut;
+  while (n) {
+    const p: Parser.SyntaxNode | null = n.parent;
+    if (p?.type === "if_statement") {
+      const rMut = ramaDe(p, mut);
+      const rUse = ramaDe(p, use);
+      if (rMut && rUse && rMut !== rUse) return true;
+    }
+    n = p;
+  }
+  return false;
+}
+
 type Mutacion = { kind: "read" | "memcpy" | "assign" | "refpass"; node: Parser.SyntaxNode; pos: number };
 
 /** Mutación más reciente de `name` con posición < beforeIndex:
@@ -241,11 +287,16 @@ function mostRecentMutation(
   fn: Parser.SyntaxNode,
   name: string,
   beforeIndex: number,
-  refParams: Map<string, Set<number>>
+  ctx: Ctx
 ): Mutacion | null {
+  const refParams = ctx.refParams;
   let best: Mutacion | null = null;
   function consider(cand: Mutacion) {
-    if (cand.pos < beforeIndex && (!best || cand.pos > best.pos)) best = cand;
+    if (cand.pos >= beforeIndex) return;
+    // Una mutación en una rama hermana del uso nunca se ejecutó con él:
+    // no puede haber cambiado el valor que se está evaluando.
+    if (ctx.useNode && ramasMutuamenteExcluyentes(cand.node, ctx.useNode)) return;
+    if (!best || cand.pos > best.pos) best = cand;
   }
   function walk(n: Parser.SyntaxNode) {
     if (n.type === "call_expression") {
@@ -301,7 +352,7 @@ function analyze(
   depth: number
 ): Orden {
   if (depth > 40) return HOST0;
-  const m = mostRecentMutation(fn, name, index, ctx.refParams);
+  const m = mostRecentMutation(fn, name, index, ctx);
   if (!m) return HOST0; // parámetro / declaración con origen local / sin rastro → orden de host
   if (m.kind === "read") return { order: "network", swaps: 0 };
   if (m.kind === "refpass") return UNKNOWN0; // pudo rellenarlo una función propia → desconocido
@@ -353,7 +404,10 @@ function flagIfNetwork(
   contexto: string
 ) {
   if (target.type !== "identifier") return;
-  const { order, swaps } = analyze(fn, target.text, target.startIndex, ctx, 0);
+  // El nodo del uso viaja en el contexto para poder descartar mutaciones
+  // que estén en una rama mutuamente excluyente con él.
+  const chk: Ctx = { ...ctx, useNode: target };
+  const { order, swaps } = analyze(fn, target.text, target.startIndex, chk, 0);
   // Solo se avisa si en el punto de uso el valor está en orden de RED y
   // llegó ahí por al menos una conversión de orden de bytes. Un valor de
   // red usado SIN convertir (swaps === 0), como un campo de 1 byte, no es
