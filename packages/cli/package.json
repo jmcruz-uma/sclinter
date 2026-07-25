@@ -19,7 +19,7 @@
   },
   "dependencies": {
     "@sclinter/core": "*",
-    "web-tree-sitter": "0.20.8"
+    "web-tree-sitter": "0.24.4"
   },
   "devDependencies": {
     "typescript": "^7.0.2",

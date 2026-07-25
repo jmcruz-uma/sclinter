@@ -17,7 +17,8 @@
     "clean": "rm -rf out"
   },
   "dependencies": {
-    "web-tree-sitter": "0.20.8"
+    "web-tree-sitter": "0.24.4",
+    "tree-sitter-cpp": "0.23.4"
   },
   "devDependencies": {
     "typescript": "^7.0.2",
