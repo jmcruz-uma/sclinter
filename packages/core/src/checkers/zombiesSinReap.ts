@@ -11,6 +11,26 @@ import Parser from "web-tree-sitter";
 // como falso negativo real durante el desarrollo y se corrigió: antes
 // solo comprobaba presencia en cualquier punto de la función, sin mirar
 // en qué rama estaba.
+//
+// EXCEPCIÓN (falso positivo real, alumno_005 de Evaluacion): recoger a
+// los hijos DENTRO de la manejadora de SIGCHLD es un modo válido —y de
+// hecho el más idiomático— de evitar zombis, aunque el wait()/waitpid()
+// quede en otra función distinta de la que hace el fork():
+//   void manejadora(int){ wait(0); }
+//   ...
+//   signal(SIGCHLD, manejadora);
+//   pid_t pid = fork();
+// Antes se avisaba aquí porque la regla solo buscaba wait/waitpid dentro
+// de la función del fork, y el mensaje ("no se ve wait()/waitpid()") era
+// además factualmente falso. Ahora: si hay un signal(SIGCHLD/SIGCLD, H)
+// donde H es una manejadora definida en el fichero cuyo cuerpo llama a
+// wait()/waitpid(), no se avisa. MATIZ conocido y aceptado (decisión del
+// profesor, 2026-07-25): un wait(0) suelto en la manejadora, sin bucle
+// con WNOHANG, puede recoger menos hijos que señales lleguen coalescidas
+// —un bug más fino—, pero eso es harina de otro costal que "no hay
+// reaping en absoluto"; ante la duda, silencio antes que ruido. Solo se
+// reconoce el registro vía signal(); sigaction() queda fuera de alcance,
+// coherente con el resto de la regla.
 
 export interface Finding {
   startIndex: number;
@@ -64,6 +84,63 @@ function hasSigchldIgnore(root: Parser.SyntaxNode): boolean {
   }
   walk(root);
   return found;
+}
+
+/** Nombre de una definición de función (el identificador de su declarador). */
+function functionDefName(fnDef: Parser.SyntaxNode): string | null {
+  let cur: Parser.SyntaxNode | null = fnDef.childForFieldName("declarator");
+  while (cur && cur.type !== "identifier") {
+    cur = cur.childForFieldName("declarator") ?? cur.namedChildren[0] ?? null;
+  }
+  return cur?.type === "identifier" ? cur.text : null;
+}
+
+/** Nombres de manejadora registrados para SIGCHLD/SIGCLD vía signal(SIG, H),
+ * excluyendo SIG_IGN/SIG_DFL (que no son funciones propias). */
+function sigchldHandlerNames(root: Parser.SyntaxNode): Set<string> {
+  const names = new Set<string>();
+  function walk(n: Parser.SyntaxNode) {
+    if (n.type === "call_expression") {
+      const func = n.childForFieldName("function");
+      const bare = func?.text.replace(/^.*::/, "");
+      if (bare === "signal") {
+        const args = n.childForFieldName("arguments");
+        const a0 = args?.namedChildren[0];
+        const a1 = args?.namedChildren[1];
+        if (
+          a0?.type === "identifier" && ["SIGCHLD", "SIGCLD"].includes(a0.text) &&
+          a1?.type === "identifier" && !["SIG_IGN", "SIG_DFL"].includes(a1.text)
+        ) {
+          names.add(a1.text);
+        }
+      }
+    }
+    for (const child of n.namedChildren) walk(child);
+  }
+  walk(root);
+  return names;
+}
+
+/** ¿Hay una manejadora de SIGCHLD (registrada con signal) cuyo cuerpo llama
+ * a wait()/waitpid()? Recoger en la manejadora es reaping válido aunque la
+ * llamada esté en otra función distinta de la del fork(). */
+function hasSigchldHandlerThatReaps(root: Parser.SyntaxNode): boolean {
+  const handlers = sigchldHandlerNames(root);
+  if (handlers.size === 0) return false;
+  let reaps = false;
+  function walk(n: Parser.SyntaxNode) {
+    if (reaps) return;
+    if (n.type === "function_definition") {
+      const name = functionDefName(n);
+      if (name && handlers.has(name) && findCalls(n, ["wait", "waitpid"]).length > 0) {
+        reaps = true;
+        return;
+      }
+    }
+    for (const child of n.namedChildren) walk(child);
+  }
+  walk(root);
+  return reaps;
 }
 
 /** Nombres asignados desde fork() dentro de la función. */
@@ -139,6 +216,10 @@ export function findZombiesSinReapIssues(
   const findings: Finding[] = [];
   const forkCalls = findCalls(tree.rootNode, ["fork"]);
 
+  // El reaping en una manejadora de SIGCHLD es global al proceso: se
+  // comprueba una sola vez sobre todo el fichero, no por función.
+  const handlerReaps = hasSigchldHandlerThatReaps(tree.rootNode);
+
   const byFunction = new Map<number, Parser.SyntaxNode[]>();
   for (const call of forkCalls) {
     const fn = enclosingFunction(call);
@@ -154,7 +235,7 @@ export function findZombiesSinReapIssues(
     const waitCalls = findCalls(fn, ["wait", "waitpid"]);
     const hasWaitFueraDelHijo = waitCalls.some((w) => !isInsideChildBranch(w, forkVars));
     const ignoresSigchld = hasSigchldIgnore(fn);
-    if (hasWaitFueraDelHijo || ignoresSigchld) continue;
+    if (hasWaitFueraDelHijo || ignoresSigchld || handlerReaps) continue;
 
     for (const forkCall of calls) {
       findings.push({
