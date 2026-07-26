@@ -1,5 +1,20 @@
 import Parser from "web-tree-sitter";
+import { macrosDelFichero } from "./byteswapSobreValorSinTipo";
 
+// Este fichero implementa DOS reglas del catálogo, hermanas pero de nivel
+// distinto (por eso tienen id propio cada una y no se mezclan en un solo
+// mensaje):
+//
+//   - sin-port-no-htons          (nivel 2) — el valor de sin_port no pasa
+//     por ninguna conversión. Mensaje deliberadamente vago.
+//   - conversion-escondida-en-macro (nivel 4) — el valor viene de una macro
+//     que esconde la conversión en su definición. El código FUNCIONA; se
+//     marca por normativa de la asignatura. Mensaje explícito.
+//
+// Las dos se coordinan: cuando salta la segunda, la primera se calla (ver
+// `valorUsaMacroConvertidora`), porque su mensaje —"esto no parece
+// correcto"— sería sencillamente falso sobre un código que sí funciona.
+//
 // Regla: se asigna un valor a un campo `sin_port` (de sockaddr_in) sin que
 // ese valor pase por htons(...) en ningún punto de la expresión. Cubre
 // tanto asignación directa (`direccion.sin_port = puerto;`) como
@@ -341,7 +356,90 @@ function valorLlamaFuncionPropia(value: Parser.SyntaxNode, fileFns: Set<string>)
   return llama;
 }
 
+/** Conversiones de orden de bytes que una macro puede estar escondiendo.
+ * La lista es más amplia que la de `containsCallTo` (que solo acepta
+ * htons/byteswap como conversión VÁLIDA) a propósito: aquí no se juzga si
+ * la conversión es la correcta, solo se detecta que hay una escondida —
+ * `#define PORT (ntohs(54321))` esconde lógica exactamente igual. */
+const CONVIERTE_ORDEN_DE_BYTES = /\b(htons|ntohs|htonl|ntohl|byteswap)\b/;
+
+/** Macros del fichero cuyo cuerpo contiene una conversión de orden de bytes. */
+function macrosQueConvierten(root: Parser.SyntaxNode): Set<string> {
+  const nombres = new Set<string>();
+  for (const [nombre, cuerpo] of macrosDelFichero(root)) {
+    if (CONVIERTE_ORDEN_DE_BYTES.test(cuerpo)) nombres.add(nombre);
+  }
+  return nombres;
+}
+
+/** Si en el subárbol del valor aparece alguna de esas macros, devuelve su
+ * nombre. Se mira TODO el subárbol, no solo si el valor ES la macro: el
+ * caso peligroso incluye `sin_port = htons(PORT)` con la conversión también
+ * dentro de PORT (conversión doble, que deja el puerto del revés). */
+function valorUsaMacroConvertidora(
+  value: Parser.SyntaxNode,
+  macros: Set<string>
+): string | null {
+  let encontrada: string | null = null;
+  function walk(n: Parser.SyntaxNode) {
+    if (encontrada) return;
+    if (n.type === "identifier" && macros.has(n.text)) {
+      encontrada = n.text;
+      return;
+    }
+    for (const child of n.namedChildren) walk(child);
+  }
+  walk(value);
+  return encontrada;
+}
+
 const MENSAJE = "El valor asignado a sin_port no parece correcto. Revísalo antes de entregar.";
+
+/** Nivel 4 (normativa): el código funciona, pero la conversión queda
+ * escondida detrás de un nombre de macro. Mensaje explícito, a diferencia
+ * del de sin-port-no-htons — y no filtra nada del examen, porque esta regla
+ * SOLO dispara cuando el propio estudiante ya escribió la conversión dentro
+ * de la macro. */
+function mensajeMacro(macro: string): string {
+  return (
+    `El valor de sin_port viene de la macro ${macro}, que esconde la conversión de orden de bytes ` +
+    `dentro de su definición. Es una práctica desaconsejada: el puerto se declara como una ` +
+    `constante con tipo y la conversión queda a la vista en el punto de uso: ` +
+    `\`const uint16_t PUERTO = 54321;\` y luego \`dir.sin_port = htons(PUERTO);\`. ` +
+    `Una macro no tiene tipo (la sustituye el preprocesador) y oculta lo que de verdad le pasa al valor.`
+  );
+}
+
+export function findConversionEscondidaEnMacroIssues(
+  tree: Parser.Tree,
+  language: Parser.Language
+): Finding[] {
+  const findings: Finding[] = [];
+  const macros = macrosQueConvierten(tree.rootNode);
+  if (macros.size === 0) return findings;
+
+  for (const [queryText, nodoCapturado] of [
+    [ASSIGN_QUERY, "assign"],
+    [INIT_QUERY, "pair"],
+  ] as const) {
+    for (const match of language.query(queryText).matches(tree.rootNode)) {
+      const field = match.captures.find((c) => c.name === "field")?.node;
+      const value = match.captures.find((c) => c.name === "value")?.node;
+      const nodo = match.captures.find((c) => c.name === nodoCapturado)?.node;
+      if (!field || !value || !nodo) continue;
+      if (field.text !== "sin_port") continue;
+      const macro = valorUsaMacroConvertidora(value, macros);
+      if (!macro) continue;
+      findings.push({
+        startIndex: nodo.startIndex,
+        endIndex: nodo.endIndex,
+        message: mensajeMacro(macro),
+      });
+    }
+  }
+
+  return findings;
+}
 
 export function findSinPortNoHtonsIssues(
   tree: Parser.Tree,
@@ -350,6 +448,7 @@ export function findSinPortNoHtonsIssues(
   const findings: Finding[] = [];
 
   const fileFns = funcionesDefinidasEnFichero(tree.rootNode);
+  const macrosConversoras = macrosQueConvierten(tree.rootNode);
 
   const assignQuery = language.query(ASSIGN_QUERY);
   for (const match of assignQuery.matches(tree.rootNode)) {
@@ -363,6 +462,10 @@ export function findSinPortNoHtonsIssues(
     if (protegidoPorIfPosteriorDeEndianness(assign, "sin_port")) continue;
     if (valorYaConvertidoEnVariableOrigen(value, assign)) continue;
     if (valorLlamaFuncionPropia(value, fileFns)) continue;
+    // La conversión existe, pero escondida en una macro: el valor es
+    // correcto, así que este mensaje sería falso. Lo dice la regla
+    // hermana conversion-escondida-en-macro, con su propio motivo.
+    if (valorUsaMacroConvertidora(value, macrosConversoras)) continue;
 
     findings.push({ startIndex: assign.startIndex, endIndex: assign.endIndex, message: MENSAJE });
   }
@@ -379,6 +482,7 @@ export function findSinPortNoHtonsIssues(
     if (protegidoPorIfPosteriorDeEndianness(pair, "sin_port")) continue;
     if (valorYaConvertidoEnVariableOrigen(value, pair)) continue;
     if (valorLlamaFuncionPropia(value, fileFns)) continue;
+    if (valorUsaMacroConvertidora(value, macrosConversoras)) continue;
 
     findings.push({ startIndex: pair.startIndex, endIndex: pair.endIndex, message: MENSAJE });
   }

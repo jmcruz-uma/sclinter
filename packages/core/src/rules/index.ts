@@ -8,7 +8,8 @@ import { findMemcpyArrayOverflowIssues } from "../checkers/memcpyArrayOverflow";
 import { findMemcpyStringDataProhibitedIssues } from "../checkers/memcpyStringDataProhibited";
 import { findMemcpyArrayAddressStyleIssues } from "../checkers/memcpyArrayAddressStyle";
 import { findSignalKillArgsSwappedIssues } from "../checkers/signalKillArgsSwapped";
-import { findSinPortNoHtonsIssues } from "../checkers/sinPortNoHtons";
+import { findSinPortNoHtonsIssues, findConversionEscondidaEnMacroIssues } from "../checkers/sinPortNoHtons";
+import { findByteswapSobreValorSinTipoIssues } from "../checkers/byteswapSobreValorSinTipo";
 import { findAcceptSinListenIssues } from "../checkers/acceptSinListen";
 import { findEntradaSalidaConSocketEscuchaIssues } from "../checkers/entradaSalidaConSocketEscucha";
 import { findForkAntesDeAcceptIssues } from "../checkers/forkAntesDeAccept";
@@ -102,6 +103,16 @@ export const RULES: Rule[] = [
     id: "sin-port-no-htons",
     titulo: "asignación a sin_port sin pasar por htons() — mensaje deliberadamente sin pista conceptual",
     run: findSinPortNoHtonsIssues,
+  },
+  {
+    id: "conversion-escondida-en-macro",
+    titulo: "el valor de sin_port viene de una macro que esconde la conversión de orden de bytes (nivel 4, normativa)",
+    run: findConversionEscondidaEnMacroIssues,
+  },
+  {
+    id: "byteswap-sobre-valor-sin-tipo",
+    titulo: "std::byteswap() sobre un literal desnudo o una macro sin tipo — deduce int e intercambia 4 bytes en vez de 2",
+    run: findByteswapSobreValorSinTipoIssues,
   },
   {
     id: "accept-sin-listen",
