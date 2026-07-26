@@ -2,7 +2,7 @@
   "name": "sclinter",
   "displayName": "sclinter",
   "description": "Chequeo de errores típicos de Software de Comunicaciones (ETSIT UMA) — avisa al guardar/abrir un .cpp/.c",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "publisher": "jmcruz-uma-etsit",
   "icon": "icon.png",
   "engines": {
