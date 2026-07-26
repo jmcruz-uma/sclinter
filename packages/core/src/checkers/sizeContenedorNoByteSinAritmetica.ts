@@ -4,9 +4,9 @@ import Parser from "web-tree-sitter";
 // como tercer argumento de memcpy o de las ocho funciones de E/S, donde
 // `contenedor` es std::array<T,N>/std::vector<T> y T NO es un tipo de
 // 1 byte (std::byte, char, unsigned char, signed char, uint8_t, int8_t,
-// char8_t). .size() da el número de ELEMENTOS, no de bytes — si cada
-// elemento ocupa más de 1 byte, se envían/leen menos bytes de los
-// necesarios.
+// char8_t, y los spellings BSD/GNU u_int8_t y u_char). .size() da el
+// número de ELEMENTOS, no de bytes — si cada elemento ocupa más de 1
+// byte, se envían/leen menos bytes de los necesarios.
 //
 // "A pelo" es literal: si el argumento es contenedor.size() envuelto en
 // cualquier operación (contenedor.size() * sizeof(T), + 1, lo que sea),
@@ -25,6 +25,8 @@ const ONE_BYTE_TYPES = new Set([
   "std::byte", "byte",
   "char", "unsignedchar", "signedchar",
   "uint8_t", "int8_t", "char8_t",
+  // spellings BSD/GNU, también de 1 byte (sys/types.h)
+  "u_int8_t", "u_char",
 ]);
 
 function enclosingFunction(node: Parser.SyntaxNode): Parser.SyntaxNode | null {

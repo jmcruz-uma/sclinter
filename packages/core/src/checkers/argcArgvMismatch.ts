@@ -10,6 +10,13 @@ import Parser from "web-tree-sitter";
 // alto usado en argv[...]. No entiende la lógica completa (por ejemplo
 // varias comprobaciones combinadas), así que puede haber falsos negativos,
 // pero no debería dar falsos positivos en los patrones típicos.
+//
+// CORRECCIÓN (falso positivo real, alumno_019 del corpus): el operador
+// tiene que ser de COMPARACIÓN (== != < <= > >=). Antes se aceptaba
+// cualquier `binary_expression` de `argc` con un número, así que una
+// RESTA como `int num = argc - 1;` (número de argumentos, nada que ver
+// con validar argc) se leía como "argc comparado contra 1" y disparaba
+// avisos sobre argv[1..] en programas que no validan argc en absoluto.
 
 export interface Finding {
   startIndex: number;
@@ -22,6 +29,9 @@ const ARGC_CMP_QUERY = `
   left: (identifier) @lhs
   right: (number_literal) @rhs) @cmp
 `;
+
+// Solo estos operadores garantizan algo sobre argc; una resta/suma no.
+const COMPARISON_OPERATORS = new Set(["==", "!=", "<", "<=", ">", ">="]);
 
 const ARGV_INDEX_QUERY = `
 (subscript_expression
@@ -54,6 +64,9 @@ export function findArgcArgvMismatchIssues(
     const cmp = match.captures.find((c) => c.name === "cmp")?.node;
     if (!lhs || !rhs || !cmp) continue;
     if (lhs.text !== "argc") continue;
+
+    const operator = cmp.childForFieldName("operator")?.text;
+    if (!operator || !COMPARISON_OPERATORS.has(operator)) continue;
 
     const fn = enclosingFunction(cmp);
     if (!fn) continue;

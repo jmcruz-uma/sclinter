@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstring>
 #include <unistd.h>
+#include <sys/types.h>
 
 ssize_t write_n(int fd, const void* data, size_t n);
 ssize_t read_n(int fd, void* data, size_t n);
@@ -47,6 +48,12 @@ void bug_beta_array_uint32(char* destino) {
 void bien_beta_elementos_byte(int sd) {
     std::array<uint8_t, 10> datos{};
     write_n(sd, datos.data(), datos.size());
+}
+
+// --- CORRECTO: u_int8_t (spelling BSD/GNU) también es de 1 byte ---
+void bien_beta_u_int8_t(int sd) {
+    std::array<u_int8_t, 10> datos{};
+    read_n(sd, datos.data(), datos.size());
 }
 
 // --- CORRECTO: hay aritmética de por medio, no se avisa a propósito ---

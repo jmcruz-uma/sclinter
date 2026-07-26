@@ -67,11 +67,19 @@ function enclosingFunction(node: Parser.SyntaxNode): Parser.SyntaxNode | null {
   return null;
 }
 
+// Patrón de identificador C++ Unicode-consciente: los estudiantes son
+// españoles y usan `tamaño`, `posición`, `número`… La `ñ` y las vocales
+// acentuadas NO casan con `[A-Za-z_]\w*` (ni `\w` incluye no-ASCII), así
+// que con la regex antigua `trailingOffsetVarName("almacen.data()+tamaño")`
+// devolvía null y NO se comprobaba la reasignación del offset (`tamaño +=
+// 2`) → falso positivo real (alumno_020). Con `\p{L}` y el flag /u sí casa.
+const IDENT = "[\\p{L}_][\\p{L}\\p{N}_]*";
+
 /** Si el texto del destino termina en "+ variable" o "[variable]", devuelve el nombre de esa variable. */
 function trailingOffsetVarName(dstText: string): string | null {
-  const plus = dstText.match(/\+\s*([A-Za-z_]\w*)\s*$/);
+  const plus = dstText.match(new RegExp(`\\+\\s*(${IDENT})\\s*$`, "u"));
   if (plus) return plus[1];
-  const bracket = dstText.match(/\[\s*([A-Za-z_]\w*)\s*\]$/);
+  const bracket = dstText.match(new RegExp(`\\[\\s*(${IDENT})\\s*\\]$`, "u"));
   if (bracket) return bracket[1];
   return null;
 }
@@ -79,7 +87,7 @@ function trailingOffsetVarName(dstText: string): string | null {
 /** El identificador base de la expresión de destino (p.ej. "pdu" tanto en
  * "pdu" como en "pdu+1" o "pdu[pos]"). */
 function baseVarName(dstText: string): string | null {
-  const m = dstText.match(/^([A-Za-z_]\w*)/);
+  const m = dstText.match(new RegExp(`^(${IDENT})`, "u"));
   return m ? m[1] : null;
 }
 
