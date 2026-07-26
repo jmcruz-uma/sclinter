@@ -11,12 +11,22 @@ import Parser from "web-tree-sitter";
 // con un mensaje más suave — no termina explícitamente, pero no hay
 // evidencia de que vaya a re-forkar.
 //
-// LIMITACIÓN CONOCIDA: heurística de "última sentencia del bloque",
-// no un análisis de terminación real. Un `if/else` donde ambas ramas
-// terminan pero no es la última sentencia sintáctica, o un `break`
-// que saca de un bucle interior sin terminar el proceso, no se
-// reconocen como "termina" — pueden darse avisos de más en construcciones
-// inusuales.
+// ANÁLISIS DE TERMINACIÓN (`alwaysExits`): no basta con mirar la última
+// sentencia — se comprueba recursivamente si la rama del hijo termina por
+// TODOS los caminos. Cuenta como terminación:
+//   - exit()/_exit()/return (y lo que venga detrás es código muerto);
+//   - un if/else CON else donde todas las ramas terminan (cadenas else-if
+//     incluidas);
+//   - un bucle infinito sin break que escape: while(1)/while(true),
+//     for(;;), do{...}while(1) — el hijo nunca cae por el final.
+// Se IGNORAN los comentarios: en tree-sitter son nodos `comment` dentro de
+// `namedChildren`, y sin filtrarlos un `exit(0); // ...` tomaba el comentario
+// como última sentencia y avisaba de más (falso positivo real del corpus).
+// LÍMITE DELIBERADO: un bucle CON condición (while(cond)/for(cond)) se
+// considera que puede caer por el final. Es a propósito: si el hijo sirve y
+// luego cae al bucle de fork del padre, es justo el fork-bomb que hay que
+// cazar. No se modela si la condición es siempre cierta ni la alcanzabilidad
+// real de un break.
 
 export interface Finding {
   startIndex: number;
@@ -71,23 +81,85 @@ function isChildCondition(ifStmt: Parser.SyntaxNode, name: string): boolean {
   );
 }
 
-/** ¿Termina este bloque (última sentencia es exit/_exit/return)? */
-function endsInTermination(block: Parser.SyntaxNode): boolean {
-  let last: Parser.SyntaxNode = block;
-  if (block.type === "compound_statement") {
-    const stmts = block.namedChildren;
-    if (stmts.length === 0) return false;
-    last = stmts[stmts.length - 1];
-  }
-  if (last.type === "return_statement") return true;
-  if (last.type === "expression_statement") {
-    const expr = last.namedChildren[0];
+/** namedChildren sin los nodos `comment` (tree-sitter los incluye). */
+function realChildren(node: Parser.SyntaxNode): Parser.SyntaxNode[] {
+  return node.namedChildren.filter((c) => c.type !== "comment");
+}
+
+/** ¿Es una sentencia de terminación directa (return o exit()/_exit())? */
+function isTermination(stmt: Parser.SyntaxNode): boolean {
+  if (stmt.type === "return_statement") return true;
+  if (stmt.type === "expression_statement") {
+    const expr = realChildren(stmt)[0];
     if (expr?.type === "call_expression") {
       const func = expr.childForFieldName("function");
       if (func && /(^|::)(exit|_exit)$/.test(func.text)) return true;
     }
   }
   return false;
+}
+
+/** ¿Hay un break que escape de ESTE bucle (no dentro de un bucle/switch
+ * anidado, que lo capturaría antes)? */
+function hasEscapingBreak(loopBody: Parser.SyntaxNode): boolean {
+  let found = false;
+  function walk(n: Parser.SyntaxNode, depth: number) {
+    if (found) return;
+    if (n.type === "break_statement" && depth === 0) {
+      found = true;
+      return;
+    }
+    const anida = ["while_statement", "for_statement", "do_statement", "for_range_loop", "switch_statement"].includes(
+      n.type
+    );
+    for (const child of n.namedChildren) walk(child, depth + (anida ? 1 : 0));
+  }
+  walk(loopBody, 0);
+  return found;
+}
+
+/** ¿Bucle infinito del que el hijo no sale cayendo por el final?
+ * while(1)/while(true), for(;;), do{...}while(1), sin break que escape. */
+function isInfiniteLoop(stmt: Parser.SyntaxNode): boolean {
+  const body = stmt.childForFieldName("body");
+  if (!body || hasEscapingBreak(body)) return false;
+  const condIsTrue = (): boolean => {
+    const cond = stmt.childForFieldName("condition");
+    const value = cond?.namedChildren[0];
+    const t = value?.text.replace(/\s+/g, "");
+    return t === "true" || t === "1";
+  };
+  if (stmt.type === "while_statement" || stmt.type === "do_statement") return condIsTrue();
+  if (stmt.type === "for_statement") return !stmt.childForFieldName("condition"); // for(;;)
+  return false;
+}
+
+/** ¿Este nodo termina por TODOS los caminos (el hijo no cae por el final)? */
+function alwaysExits(node: Parser.SyntaxNode): boolean {
+  switch (node.type) {
+    case "compound_statement":
+      // Si alguna sentencia termina incondicionalmente, lo que sigue es
+      // código muerto y el bloque entero termina.
+      return realChildren(node).some(alwaysExits);
+    case "return_statement":
+      return true;
+    case "expression_statement":
+      return isTermination(node);
+    case "if_statement": {
+      const consequence = node.childForFieldName("consequence");
+      const alternative = node.childForFieldName("alternative");
+      if (!consequence || !alternative) return false; // sin else, un camino cae
+      const cuerpoElse =
+        alternative.type === "else_clause" ? realChildren(alternative)[0] : alternative;
+      return !!cuerpoElse && alwaysExits(consequence) && alwaysExits(cuerpoElse);
+    }
+    case "while_statement":
+    case "for_statement":
+    case "do_statement":
+      return isInfiniteLoop(node);
+    default:
+      return false;
+  }
 }
 
 function findAncestorLoops(node: Parser.SyntaxNode): Parser.SyntaxNode[] {
@@ -130,7 +202,7 @@ export function findHijoSinTerminarIssues(
               if (!isChildCondition(m, name)) continue;
               const consequence = m.childForFieldName("consequence");
               if (!consequence) continue;
-              if (endsInTermination(consequence)) continue;
+              if (alwaysExits(consequence)) continue;
 
               const dangerousLoop = findAncestorLoops(m).some((loop) => containsForkCall(loop));
               findings.push({
