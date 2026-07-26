@@ -1,4 +1,5 @@
 import Parser from "web-tree-sitter";
+import { declaracionVigente, textoDelTipo } from "./scopeResolution";
 
 // Regla: memcpy/write_n/read_n/send/sendto/recv/recvfrom/read/write sobre
 // &variable, donde `variable` es de un tipo struct/class DEFINIDO EN EL
@@ -18,15 +19,6 @@ export interface Finding {
 }
 
 const FUNCS = ["memcpy", "read", "read_n", "recv", "recvfrom", "write", "write_n", "send", "sendto"];
-
-function enclosingFunction(node: Parser.SyntaxNode): Parser.SyntaxNode | null {
-  let n: Parser.SyntaxNode | null = node;
-  while (n) {
-    if (n.type === "function_definition") return n;
-    n = n.parent;
-  }
-  return null;
-}
 
 /** Nombres de struct/class definidos en el fichero que tienen algún campo std::string/std::vector. */
 function riskyStructNames(root: Parser.SyntaxNode): Set<string> {
@@ -58,26 +50,14 @@ function riskyStructNames(root: Parser.SyntaxNode): Set<string> {
   return names;
 }
 
-/** Tipo declarado de `name` dentro de la función (texto normalizado), o null. */
-function declaredTypeOf(functionNode: Parser.SyntaxNode, name: string): string | null {
-  let result: string | null = null;
-  function walk(n: Parser.SyntaxNode) {
-    if (result) return;
-    if (n.type === "declaration" || n.type === "parameter_declaration") {
-      const typeNode = n.childForFieldName("type");
-      const declNode = n.childForFieldName("declarator");
-      if (typeNode && declNode) {
-        let cur: Parser.SyntaxNode | null = declNode;
-        while (cur && cur.type !== "identifier") {
-          cur = cur.childForFieldName("declarator") ?? cur.namedChildren[0] ?? null;
-        }
-        if (cur?.text === name) result = typeNode.text.replace(/\s+/g, "");
-      }
-    }
-    for (const child of n.namedChildren) walk(child);
-  }
-  walk(functionNode);
-  return result;
+/** Tipo de `name` según la declaración VIGENTE en el punto de uso (texto
+ * normalizado), o null si no hay ninguna visible. Se resuelve el ámbito
+ * (ver checkers/scopeResolution.ts) en vez de quedarse con la primera
+ * declaración que aparezca en la función: dos variables distintas pueden
+ * compartir nombre si una sombrea a la otra dentro de un bloque. */
+function tipoEnEsePunto(useNode: Parser.SyntaxNode, name: string): string | null {
+  const decl = declaracionVigente(useNode, name);
+  return decl ? textoDelTipo(decl) : null;
 }
 
 export function findStructConContenedorDireccionIssues(
@@ -98,9 +78,7 @@ export function findStructConContenedorDireccionIssues(
           if (arg.type !== "pointer_expression") continue;
           const target = arg.childForFieldName("argument");
           if (target?.type !== "identifier") continue;
-          const fn = enclosingFunction(n);
-          if (!fn) continue;
-          const type = declaredTypeOf(fn, target.text);
+          const type = tipoEnEsePunto(arg, target.text);
           if (type && riskyStructs.has(type)) {
             findings.push({
               startIndex: arg.startIndex,

@@ -1,4 +1,5 @@
 import Parser from "web-tree-sitter";
+import { declaracionVigente } from "./scopeResolution";
 
 // Regla: si dentro de la misma función hay dos (o más) llamadas a memcpy
 // que escriben en el mismo destino, sin que la expresión cambie con
@@ -28,9 +29,19 @@ import Parser from "web-tree-sitter";
 // dentro de un if/else más adelante en la misma función — dos objetos
 // distintos que comparten nombre por "shadowing"), la regla los confundía
 // y marcaba repetición falsa entre memcpy de una PDU y memcpy de la otra,
-// sin relación real. Corregido: si hay una nueva declaración del nombre
-// base entre dos llamadas con el mismo texto de destino, no se considera
-// repetición — es una variable distinta, no la misma sin desplazar.
+// sin relación real.
+//
+// La primera versión de este arreglo preguntaba "¿hay una declaración
+// nueva ENTRE las dos llamadas?", que se quedaba corta: si la declaración
+// que sombrea está ANTES de la primera llamada, no la veía. Por ejemplo
+//   std::string buffer;
+//   if (c) { char buffer[10]; memcpy(&buffer, src+0, 4); }
+//   memcpy(&buffer, src+4, 4);        // objeto distinto, se marcaba
+// Ahora se hace la pregunta correcta: **¿las dos llamadas resuelven a la
+// MISMA declaración?** (ver checkers/scopeResolution.ts). Si no, son
+// objetos distintos y no se comparan. Esto subsume el caso de la
+// redeclaración entre llamadas, así que sustituye a aquella comprobación
+// en vez de sumarse a ella.
 
 // CORRECCIÓN 3: la comprobación de reasignación solo miraba el offset
 // cuando aparecía como sufijo de la expresión de destino ("buffer.data()
@@ -256,45 +267,21 @@ function identificadorBase(node: Parser.SyntaxNode | null): string | null {
   return null;
 }
 
-/** Todos los identificadores declarados por una `declaration`. OJO:
- * `uint8_t TIPO, id_SLOT;` produce DOS campos `declarator` hermanos
- * (comprobado con sonda), y `childForFieldName("declarator")` devuelve solo
- * el primero — por eso `id_SLOT` era invisible como redeclaración. También
- * cubre `uint8_t a = 1, b = 2;`, donde los hijos son `init_declarator`. */
-function nombresDeclarados(declaration: Parser.SyntaxNode): string[] {
-  const nombres: string[] = [];
-  for (let i = 0; i < declaration.childCount; i++) {
-    if (declaration.fieldNameForChild(i) !== "declarator") continue;
-    let cur: Parser.SyntaxNode | null = declaration.child(i);
-    while (cur && cur.type !== "identifier") {
-      cur = cur.childForFieldName("declarator") ?? cur.namedChildren[0] ?? null;
-    }
-    if (cur) nombres.push(cur.text);
-  }
-  return nombres;
-}
-
-/** ¿Hubo una NUEVA declaración de `name` con posición en (fromIndex, toIndex)?
- * Esto cubre "shadowing": una variable local declarada de nuevo en un
- * bloque anidado (p.ej. un `char pdu[6];` distinto dentro de un `if`/`else`
- * posterior) es un objeto DISTINTO aunque comparta nombre con uno anterior
- * de la misma función — no tiene sentido comparar sus memcpy entre sí. */
-function declaredBetween(fn: Parser.SyntaxNode, name: string, fromIndex: number, toIndex: number): boolean {
-  let found = false;
-  function walk(n: Parser.SyntaxNode) {
-    if (found) return;
-    if (n.startIndex <= fromIndex || n.startIndex >= toIndex) {
-      for (const child of n.namedChildren) walk(child);
-      return;
-    }
-    if (n.type === "declaration" && nombresDeclarados(n).includes(name)) {
-      found = true;
-      return;
-    }
-    for (const child of n.namedChildren) walk(child);
-  }
-  walk(fn);
-  return found;
+/** ¿Los dos usos del mismo nombre se refieren a OBJETOS DISTINTOS? Se
+ * resuelve la declaración vigente en cada punto: si no es la misma, hay
+ * "shadowing" de por medio y no tiene sentido comparar sus memcpy entre sí.
+ * Si el nombre no se puede resolver en ninguno de los dos puntos (p.ej.
+ * viene de una cabecera), se considera el mismo objeto y se sigue
+ * comparando, que es el comportamiento conservador de siempre. */
+function objetosDistintos(
+  usoActual: Parser.SyntaxNode,
+  usoPrevio: Parser.SyntaxNode,
+  name: string | null
+): boolean {
+  if (!name) return false;
+  const declActual = declaracionVigente(usoActual, name);
+  const declPrevia = declaracionVigente(usoPrevio, name);
+  return declActual?.startIndex !== declPrevia?.startIndex;
 }
 
 /** ¿Hubo una reasignación a `name` con posición en (fromIndex, toIndex)? */
@@ -440,8 +427,7 @@ export function findRepeatedDestinationIssues(
       const reassigned =
         !!(offsetName && fn && reassignedBetween(fn, offsetName, previous.callStart, c.callStart)) ||
         !!(baseName && fn && reassignedBetween(fn, baseName, previous.callStart, c.callStart));
-      const redeclarada =
-        !!(baseName && fn && declaredBetween(fn, baseName, previous.callStart, c.callStart));
+      const otroObjeto = objetosDistintos(c.dstNode, previous.dstNode, baseName);
       const enviada =
         !!(baseName && fn && sentBetween(fn, baseName, previous.callStart, c.callStart));
 
@@ -467,7 +453,7 @@ export function findRepeatedDestinationIssues(
         baseOrigenPrevio !== null &&
         baseOrigenActual !== baseOrigenPrevio;
 
-      if (reassigned || redeclarada || enviada || mismaCopia || origenesDeBuffersDistintos) {
+      if (reassigned || otroObjeto || enviada || mismaCopia || origenesDeBuffersDistintos) {
         // No es una repetición real, aunque el texto del destino coincida.
         // Se actualiza el punto de referencia para seguir comparando
         // contra este.

@@ -1,4 +1,5 @@
 import Parser from "web-tree-sitter";
+import { declaracionVigente, textoDelTipo } from "./scopeResolution";
 
 // Regla de ESTILO, no de bug: memcpy(&arr, ...) o memcpy(..., &arr, ...)
 // donde `arr` es un std::array es código correcto (comprobado: para
@@ -29,39 +30,14 @@ const MEMCPY_QUERY = `
 ) @call
 `;
 
-function enclosingFunction(node: Parser.SyntaxNode): Parser.SyntaxNode | null {
-  let n: Parser.SyntaxNode | null = node;
-  while (n) {
-    if (n.type === "function_definition") return n;
-    n = n.parent;
-  }
-  return null;
-}
-
-/** Nombres declarados como std::array<T, N> dentro de la función. */
-function arrayVarNames(functionNode: Parser.SyntaxNode): Set<string> {
-  const names = new Set<string>();
-
-  function walk(n: Parser.SyntaxNode) {
-    if (n.type === "declaration" || n.type === "parameter_declaration") {
-      const typeNode = n.childForFieldName("type");
-      const declNode = n.childForFieldName("declarator");
-      if (typeNode && declNode) {
-        const typeText = typeNode.text.replace(/\s+/g, "");
-        if (/^(std::)?array<.+>$/.test(typeText)) {
-          let cur: Parser.SyntaxNode | null = declNode;
-          while (cur && cur.type !== "identifier") {
-            cur = cur.childForFieldName("declarator") ?? cur.namedChildren[0] ?? null;
-          }
-          if (cur) names.add(cur.text);
-        }
-      }
-    }
-    for (const child of n.namedChildren) walk(child);
-  }
-
-  walk(functionNode);
-  return names;
+/** ¿El nombre usado en `useNode` corresponde, EN ESE PUNTO, a un std::array?
+ * Se resuelve la declaración vigente (ver checkers/scopeResolution.ts) en vez
+ * de recoger nombres de la función entera: dos variables distintas pueden
+ * compartir nombre si una sombrea a la otra dentro de un bloque. */
+function esArrayEnEsePunto(useNode: Parser.SyntaxNode, name: string): boolean {
+  const decl = declaracionVigente(useNode, name);
+  if (!decl) return false;
+  return /^(std::)?array<.+>$/.test(textoDelTipo(decl));
 }
 
 export function findMemcpyArrayAddressStyleIssues(
@@ -79,10 +55,6 @@ export function findMemcpyArrayAddressStyleIssues(
     if (!funcNode || !arg0 || !arg1 || !callNode) continue;
     if (!/(^|::)memcpy$/.test(funcNode.text)) continue;
 
-    const fn = enclosingFunction(callNode);
-    if (!fn) continue;
-    const arrays = arrayVarNames(fn);
-
     for (const [argNode, rol] of [
       [arg0, "destino"],
       [arg1, "origen"],
@@ -90,7 +62,7 @@ export function findMemcpyArrayAddressStyleIssues(
       if (argNode.type !== "pointer_expression") continue;
       const target = argNode.childForFieldName("argument");
       if (!target || target.type !== "identifier") continue;
-      if (!arrays.has(target.text)) continue;
+      if (!esArrayEnEsePunto(argNode, target.text)) continue;
 
       findings.push({
         startIndex: argNode.startIndex,

@@ -1,4 +1,5 @@
 import Parser from "web-tree-sitter";
+import { declaracionVigente, textoDelTipo } from "./scopeResolution";
 
 // Regla: en read/read_n/recv/recvfrom/write/write_n/send/sendto, el
 // buffer de datos es SIEMPRE el segundo argumento (posición 1), aunque
@@ -25,39 +26,21 @@ export interface Finding {
 
 const IO_FUNCS = ["read", "read_n", "recv", "recvfrom", "write", "write_n", "send", "sendto"];
 
-function enclosingFunction(node: Parser.SyntaxNode): Parser.SyntaxNode | null {
-  let n: Parser.SyntaxNode | null = node;
-  while (n) {
-    if (n.type === "function_definition") return n;
-    n = n.parent;
-  }
+/** Si el nombre corresponde, EN ESE PUNTO, a un std::string o a un
+ * std::vector, devuelve cuál de los dos; si no, null. Se resuelve la
+ * declaración vigente (ver checkers/scopeResolution.ts) en vez de recoger
+ * nombres de la función entera: dos variables distintas pueden compartir
+ * nombre si una sombrea a la otra dentro de un bloque. */
+function contenedorEnEsePunto(
+  useNode: Parser.SyntaxNode,
+  name: string
+): "std::string" | "std::vector" | null {
+  const decl = declaracionVigente(useNode, name);
+  if (!decl) return null;
+  const tipo = textoDelTipo(decl);
+  if (tipo === "std::string" || tipo === "string") return "std::string";
+  if (/^(std::)?vector<.+>$/.test(tipo)) return "std::vector";
   return null;
-}
-
-/** Nombres declarados como std::string o std::vector<T> dentro de la función, con su tipo. */
-function heapBackedVarNames(functionNode: Parser.SyntaxNode): Map<string, string> {
-  const names = new Map<string, string>();
-  function walk(n: Parser.SyntaxNode) {
-    if (n.type === "declaration" || n.type === "parameter_declaration") {
-      const typeNode = n.childForFieldName("type");
-      const declNode = n.childForFieldName("declarator");
-      if (typeNode && declNode) {
-        const typeText = typeNode.text.replace(/\s+/g, "");
-        const isString = typeText === "std::string" || typeText === "string";
-        const isVector = /^(std::)?vector<.+>$/.test(typeText);
-        if (isString || isVector) {
-          let cur: Parser.SyntaxNode | null = declNode;
-          while (cur && cur.type !== "identifier") {
-            cur = cur.childForFieldName("declarator") ?? cur.namedChildren[0] ?? null;
-          }
-          if (cur) names.set(cur.text, isString ? "std::string" : "std::vector");
-        }
-      }
-    }
-    for (const child of n.namedChildren) walk(child);
-  }
-  walk(functionNode);
-  return names;
 }
 
 export function findIoContainerAddressIssues(
@@ -76,24 +59,20 @@ export function findIoContainerAddressIssues(
         if (buf?.type === "pointer_expression") {
           const target = buf.childForFieldName("argument");
           if (target?.type === "identifier") {
-            const fn = enclosingFunction(n);
-            if (fn) {
-              const vars = heapBackedVarNames(fn);
-              const type = vars.get(target.text);
-              if (type) {
-                const consejo =
-                  type === "std::vector"
-                    ? `Usa ${target.text}.data() sobre contenido ya reservado (tras resize()).`
-                    : `En esta asignatura, además, usar memcpy o E/S directa sobre .data() de un std::string ` +
-                      `también está restringido — usa los métodos propios del contenedor.`;
-                findings.push({
-                  startIndex: buf.startIndex,
-                  endIndex: buf.endIndex,
-                  message:
-                    `${bare}(..., &${target.text}, ...) sobreescribe/lee la representación interna del ` +
-                    `${type}, no su contenido — su contenido vive en otra dirección. ${consejo}`,
-                });
-              }
+            const type = contenedorEnEsePunto(buf, target.text);
+            if (type) {
+              const consejo =
+                type === "std::vector"
+                  ? `Usa ${target.text}.data() sobre contenido ya reservado (tras resize()).`
+                  : `En esta asignatura, además, usar memcpy o E/S directa sobre .data() de un std::string ` +
+                    `también está restringido — usa los métodos propios del contenedor.`;
+              findings.push({
+                startIndex: buf.startIndex,
+                endIndex: buf.endIndex,
+                message:
+                  `${bare}(..., &${target.text}, ...) sobreescribe/lee la representación interna del ` +
+                  `${type}, no su contenido — su contenido vive en otra dirección. ${consejo}`,
+              });
             }
           }
         }

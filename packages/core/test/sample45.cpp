@@ -51,6 +51,25 @@ void redeclaracion_de_dos_en_una_linea(const uint8_t *almacen, std::array<uint8_
     }
 }
 
+// Sombreado con la declaración ANTES de la primera llamada: las dos
+// escrituras son a objetos distintos (el array interno y el de fuera del
+// bloque), aunque entre ellas no haya ninguna declaración nueva. Lo decide
+// la declaración VIGENTE en cada punto, no si hubo una declaración entre
+// medias. Ojo: los dos orígenes salen del mismo buffer base, si no la
+// excepción de "orígenes de buffers distintos" taparía el caso y esto no
+// probaría nada.
+void sombreado_declarado_antes_de_la_primera_llamada(const uint8_t *src, int cond) {
+    uint8_t pdu[8];                            // array de C: así este fichero
+                                               // no arrastra el aviso de
+                                               // estilo de &std::array
+    if (cond) {
+        uint32_t pdu;                          // objeto DISTINTO
+        std::memcpy(&pdu, src + 0, 4);
+        (void)pdu;
+    }
+    std::memcpy(&pdu, src + 4, 4);
+}
+
 // Variable de paso reutilizada para extraer de DOS buffers distintos: son
 // extracciones sin relación, no un olvido de desplazamiento.
 // (Patrón de alumno_015 ej1 L145.)

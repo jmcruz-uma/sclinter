@@ -1,4 +1,5 @@
 import Parser from "web-tree-sitter";
+import { declaracionVigente, textoDelTipo } from "./scopeResolution";
 
 // Regla: memcpy(&variable, ..., n) donde `variable` es un std::string o
 // un std::vector. Esto NO escribe en el contenido — sobreescribe la
@@ -33,43 +34,21 @@ const MEMCPY_QUERY = `
 ) @call
 `;
 
-function enclosingFunction(node: Parser.SyntaxNode): Parser.SyntaxNode | null {
-  let n: Parser.SyntaxNode | null = node;
-  while (n) {
-    if (n.type === "function_definition") return n;
-    n = n.parent;
-  }
+/** Si el nombre corresponde, EN ESE PUNTO, a un std::string o a un
+ * std::vector, devuelve cuál de los dos; si no, null. Se resuelve la
+ * declaración vigente (ver checkers/scopeResolution.ts) en vez de recoger
+ * nombres de la función entera: dos variables distintas pueden compartir
+ * nombre si una sombrea a la otra dentro de un bloque. */
+function contenedorEnEsePunto(
+  useNode: Parser.SyntaxNode,
+  name: string
+): "std::string" | "std::vector" | null {
+  const decl = declaracionVigente(useNode, name);
+  if (!decl) return null;
+  const tipo = textoDelTipo(decl);
+  if (tipo === "std::string" || tipo === "string") return "std::string";
+  if (/^(std::)?vector<.+>$/.test(tipo)) return "std::vector";
   return null;
-}
-
-/** Nombres declarados como std::string o std::vector<T> dentro de la función, con su tipo. */
-function heapBackedVarNames(functionNode: Parser.SyntaxNode): Map<string, string> {
-  const names = new Map<string, string>();
-
-  function walk(n: Parser.SyntaxNode) {
-    if (n.type === "declaration" || n.type === "parameter_declaration") {
-      const typeNode = n.childForFieldName("type");
-      const declNode = n.childForFieldName("declarator");
-      if (typeNode && declNode) {
-        const typeText = typeNode.text.replace(/\s+/g, "");
-        const isString = typeText === "std::string" || typeText === "string";
-        const isVector = /^(std::)?vector<.+>$/.test(typeText);
-        if (isString || isVector) {
-          // El declarator puede ser directamente el identificador, o
-          // envolver uno (referencia, puntero...) — bajamos hasta encontrarlo.
-          let cur: Parser.SyntaxNode | null = declNode;
-          while (cur && cur.type !== "identifier") {
-            cur = cur.childForFieldName("declarator") ?? cur.namedChildren[0] ?? null;
-          }
-          if (cur) names.set(cur.text, isString ? "std::string" : "std::vector");
-        }
-      }
-    }
-    for (const child of n.namedChildren) walk(child);
-  }
-
-  walk(functionNode);
-  return names;
 }
 
 export function findMemcpyContainerAddressDestinationIssues(
@@ -91,11 +70,7 @@ export function findMemcpyContainerAddressDestinationIssues(
     const target = arg0.childForFieldName("argument");
     if (!target || target.type !== "identifier") continue;
 
-    const fn = enclosingFunction(callNode);
-    if (!fn) continue;
-
-    const vars = heapBackedVarNames(fn);
-    const type = vars.get(target.text);
+    const type = contenedorEnEsePunto(arg0, target.text);
     if (type) {
       const consejo =
         type === "std::vector"
