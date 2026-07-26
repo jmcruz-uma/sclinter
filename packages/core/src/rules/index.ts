@@ -10,6 +10,7 @@ import { findMemcpyArrayAddressStyleIssues } from "../checkers/memcpyArrayAddres
 import { findSignalKillArgsSwappedIssues } from "../checkers/signalKillArgsSwapped";
 import { findSinPortNoHtonsIssues, findConversionEscondidaEnMacroIssues } from "../checkers/sinPortNoHtons";
 import { findByteswapSobreValorSinTipoIssues } from "../checkers/byteswapSobreValorSinTipo";
+import { findEnvioDeBufferSinRellenarIssues } from "../checkers/envioDeBufferSinRellenar";
 import { findAcceptSinListenIssues } from "../checkers/acceptSinListen";
 import { findEntradaSalidaConSocketEscuchaIssues } from "../checkers/entradaSalidaConSocketEscucha";
 import { findForkAntesDeAcceptIssues } from "../checkers/forkAntesDeAccept";
@@ -108,6 +109,11 @@ export const RULES: Rule[] = [
     id: "conversion-escondida-en-macro",
     titulo: "el valor de sin_port viene de una macro que esconde la conversión de orden de bytes (nivel 4, normativa)",
     run: findConversionEscondidaEnMacroIssues,
+  },
+  {
+    id: "envio-de-buffer-sin-rellenar",
+    titulo: "se envía con write/write_n/send/sendto un buffer local en el que no se ha escrito nada en toda la función",
+    run: findEnvioDeBufferSinRellenarIssues,
   },
   {
     id: "byteswap-sobre-valor-sin-tipo",

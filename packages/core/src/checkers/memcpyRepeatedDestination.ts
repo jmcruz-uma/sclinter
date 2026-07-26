@@ -237,8 +237,10 @@ function esDireccionDeVariable(node: Parser.SyntaxNode): boolean {
 /** El identificador base de una expresión, resuelto sobre el ÁRBOL (ver
  * CORRECCIÓN 4). Devuelve "pdu" tanto en `pdu` como en `&pdu`, `*pdu`,
  * `pdu.data()`, `pdu->campo`, `pdu[i]`, `pdu + 2`, `(uint8_t*)&pdu`,
- * `static_cast<void*>(&pdu)` o `std::addressof(pdu)`. */
-function identificadorBase(node: Parser.SyntaxNode | null): string | null {
+ * `static_cast<void*>(&pdu)` o `std::addressof(pdu)`.
+ * Se exporta porque envioDeBufferSinRellenar.ts necesita exactamente la
+ * misma resolución sobre el argumento de buffer de las funciones de envío. */
+export function identificadorBase(node: Parser.SyntaxNode | null): string | null {
   if (!node) return null;
   const n = sinEnvoltorios(node);
 
