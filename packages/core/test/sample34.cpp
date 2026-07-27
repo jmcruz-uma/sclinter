@@ -32,6 +32,40 @@ void bien_recepcion_memcpy(int fd, char* buffer) {
     memcpy(buffer, almacen + 2, longitud);
 }
 
+// CALLA: la misma extracción, pero escrita con `mempcpy` (extensión GNU de
+// `memcpy`: misma firma, solo cambia el valor de retorno). Caso real del
+// corpus — antes se avisaba aquí porque el nombre no se reconocía como
+// extracción y `longitud` parecía de origen local.
+void bien_recepcion_mempcpy(int fd, char* buffer) {
+    uint8_t almacen[64];
+    read_n(fd, almacen, sizeof(almacen));
+    uint16_t longitud;
+    mempcpy(&longitud, almacen, 2);
+    longitud = std::byteswap(longitud);      // red -> host
+    memcpy(buffer, almacen + 2, longitud);
+}
+
+// AVISA: control hermano del anterior — `mempcpy` con los argumentos al revés
+// (destino el buffer, origen la variable). Así `longitud` NO se rellena de la
+// red: sigue siendo de origen local y el byteswap la deja en orden de red.
+// Confirma que reconocer `mempcpy` no ha vuelto la regla más permisiva.
+void bug_mempcpy_argumentos_invertidos(int fd, char* buffer) {
+    uint8_t almacen[64];
+    read_n(fd, almacen, sizeof(almacen));
+    uint16_t longitud = 0;
+    mempcpy(almacen, &longitud, 2);
+    longitud = std::byteswap(longitud);      // host -> red
+    memcpy(buffer, almacen + 2, longitud);
+}
+
+// AVISA: `mempcpy` también se vigila como tamaño, igual que `memcpy` — si no,
+// el mismo bug pasaría desapercibido solo por haber escrito el otro nombre.
+void bug_mempcpy_como_tamano(const char* texto, char* buffer) {
+    uint16_t longitud = strlen(texto);
+    longitud = std::byteswap(longitud);      // host -> red
+    mempcpy(buffer, texto, longitud);
+}
+
 // CALLA: campo de struct leído de red y convertido (misma función).
 struct Mensaje { uint16_t num; uint16_t lon; };
 void bien_recepcion_campo_struct(int fd, char* buffer) {

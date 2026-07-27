@@ -34,6 +34,47 @@ import Parser from "web-tree-sitter";
 // Es un conteo de sentencias de asignación en orden textual, no un
 // análisis de flujo de control real (no modela bucles ni ramas) —
 // mismo nivel de rigor que zombies-sin-reap/hijo-sin-terminar.
+//
+// ---------------------------------------------------------------------------
+// PASE DE REVISIÓN DEL CORPUS (2026-07-27)
+// ---------------------------------------------------------------------------
+//
+// Los 44 avisos que esta regla daba sobre el corpus de exámenes se revisaron
+// uno a uno y se cruzaron con el informe de corrección MANUAL
+// (`Evaluacion2/anonimos/evaluacion.txt`), que es la verdad de referencia.
+// Los 44 caían todos en Evaluacion2, en 26 ficheros y 32 pares
+// (fichero, variable) — 12 avisos son usos repetidos de la misma variable.
+// Quedaron así:
+//
+//  A) 28 avisos — emisor canónico: valor de origen local (strlen/.size()/argc)
+//     convertido para enviarlo y reutilizado localmente como tamaño, límite de
+//     bucle u offset. Aciertos limpios; el informe manual los describe con las
+//     mismas palabras ("el bucle for usa numero_textos ya en big-endian como
+//     límite"). Es el caso para el que existe la regla. Nada que tocar.
+//
+//  B) 10 avisos — `memcpy` con los argumentos INVERTIDOS al extraer del buffer
+//     de red (`memcpy(almacen.data(), &tam, 2)`). La variable nunca se rellena,
+//     así que la regla la ve como origen local y acierta el veredicto, pero
+//     señala la causa equivocada: el fallo está en el orden de los argumentos,
+//     no en las conversiones. El informe manual marca ese bug como [crítico] en
+//     MÁS ficheros de los que vemos, así que hay hueco para una regla propia
+//     (destino = buffer leído de red, origen = `&escalar` no escrito antes).
+//     Se deja como tarea aparte: no se toca esta regla por ello.
+//
+//  C) 5 avisos — variable SIN INICIALIZAR sobre la que se aplica la conversión.
+//     El aviso es correcto pero el defecto primario es otro, y dos de los cinco
+//     tienen además un error de anchura muy nítido (`htonl` sobre un `uint16_t`,
+//     `std::byteswap` sobre un `uint8_t`, que es un no-op). Material para
+//     ampliar la regla 34, no para ésta. Se dejan como están.
+//
+//  D) 1 aviso — ÚNICO falso positivo, ya corregido: una recepción correcta
+//     escrita con `mempcpy` (ver `EXTRACT_FUNCS` y `SIZE_FUNCS`). El informe
+//     manual coincide: "mempcpy en vez de memcpy — extensión GNU; el valor de
+//     retorno se descarta, funciona igual".
+//
+// Conclusión: fuera del `mempcpy`, la regla no tenía falsos positivos sobre el
+// corpus. Sigue pendiente el DOBLE byteswap (ver la nota de FASE ACTUAL más
+// abajo, en `resumenParametro`).
 
 export interface Finding {
   startIndex: number;
@@ -42,7 +83,28 @@ export interface Finding {
 }
 
 const SWAP_FUNCS = ["htons", "ntohs", "htonl", "ntohl", "byteswap"];
-const SIZE_FUNCS = ["memcpy", "read_n", "write_n"];
+/** Funciones cuyo TERCER argumento es un tamaño y por tanto se vigila.
+ * `mempcpy` va aquí por coherencia con `EXTRACT_FUNCS`: es `memcpy` con otro
+ * valor de retorno, y dejarla fuera haría que el mismo bug se escapara solo
+ * por haber escrito el otro nombre. Sobre el corpus el efecto es nulo (la
+ * única llamada a `mempcpy` lleva un tamaño literal), así que el caso de
+ * control vive en `sample34`. `memccpy` NO entra — ver `EXTRACT_FUNCS`. */
+const SIZE_FUNCS = ["memcpy", "mempcpy", "read_n", "write_n"];
+/** Funciones que EXTRAEN un valor de un buffer con la firma `(dst, src, n)`:
+ * ver `memcpy(&longitud, almacen, 2)` es lo que permite saber que `longitud`
+ * salió de un buffer leído de la red. `mempcpy` es la extensión GNU de
+ * `memcpy` — misma firma, solo cambia el valor de retorno (devuelve `dst + n`
+ * en vez de `dst`), así que a efectos de esta regla es idéntica. Se añadió
+ * tras encontrar un falso positivo en el corpus: una recepción correcta
+ * escrita con `mempcpy` se leía como "origen local" porque el nombre no
+ * estaba en esta lista.
+ *
+ * `memccpy` NO entra, aunque el nombre se parezca: su firma es
+ * `(dst, src, c, n)` — el tercer argumento es un carácter de parada, no un
+ * tamaño. Tratarla como `memcpy` sería acertar de casualidad en las llamadas
+ * de tres argumentos (que además están mal escritas) y equivocarse en las
+ * bien escritas. */
+const EXTRACT_FUNCS = ["memcpy", "mempcpy"];
 const READ_FUNCS = ["read", "read_n", "readn", "recv", "recvfrom"];
 const COMPARISON_OPS = ["==", "!=", "<", "<=", ">", ">="];
 
@@ -608,7 +670,7 @@ function collectMutations(
         const buf = args?.namedChildren[1];
         if (buf && identOf(buf) === name) consider({ kind: "read", node: n, pos: n.startIndex, cover: n });
       }
-      if (b === "memcpy") {
+      if (b && EXTRACT_FUNCS.includes(b)) {
         const dst = args?.namedChildren[0];
         if (dst && identOf(dst) === name) consider({ kind: "memcpy", node: n, pos: n.startIndex, cover: n });
       }
