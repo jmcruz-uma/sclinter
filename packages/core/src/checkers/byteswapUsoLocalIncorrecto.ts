@@ -112,6 +112,71 @@ const EXTRACT_FUNCS = ["memcpy", "mempcpy"];
 const READ_FUNCS = ["read", "read_n", "readn", "recv", "recvfrom"];
 const COMPARISON_OPS = ["==", "!=", "<", "<=", ">", ">="];
 
+/** Para las funciones cuya firma conocemos, qué papel juega cada posición de
+ * argumento: `buffer` es una dirección (una suma ahí es un DESPLAZAMIENTO) y
+ * `tamano` es una cuenta de bytes (una suma ahí es parte del TAMAÑO).
+ *
+ * Va por POSICIÓN a propósito. La versión anterior buscaba cualquier `+`
+ * dentro de un `argument_list` y daba por buffer a cualquier identificador que
+ * hubiera a la izquierda; con `mensaje+2` acertaba, pero con
+ * `sendto(sd, m, long1+long2+4, ...)` habría llamado buffer a `long1` y dicho
+ * "desplazamiento dentro de un buffer" sobre un tamaño. Saber la posición
+ * quita la ambigüedad de raíz. */
+const PAPELES_DE_ARGUMENTO: Record<string, { buffer: number[]; tamano: number }> = {
+  memcpy: { buffer: [0, 1], tamano: 2 },
+  mempcpy: { buffer: [0, 1], tamano: 2 },
+  read: { buffer: [1], tamano: 2 },
+  read_n: { buffer: [1], tamano: 2 },
+  readn: { buffer: [1], tamano: 2 },
+  write: { buffer: [1], tamano: 2 },
+  write_n: { buffer: [1], tamano: 2 },
+  writen: { buffer: [1], tamano: 2 },
+  recv: { buffer: [1], tamano: 2 },
+  send: { buffer: [1], tamano: 2 },
+  recvfrom: { buffer: [1], tamano: 2 },
+  sendto: { buffer: [1], tamano: 2 },
+};
+
+/** Quita los envoltorios que no cambian el valor: paréntesis y casts. Sin
+ * esto, `(size_t)longitud` o `(2 + tam)` no se reconocen y el aviso se pierde
+ * — casos reales del corpus. */
+function desenvuelve(n: Parser.SyntaxNode): Parser.SyntaxNode {
+  let e = n;
+  while (e.type === "parenthesized_expression" || e.type === "cast_expression") {
+    const sig = e.childForFieldName("value") ?? e.namedChildren[e.namedChildren.length - 1];
+    if (!sig) break;
+    e = sig;
+  }
+  return e;
+}
+
+/** Operandos de una cadena aditiva, en orden textual: `a+b-c` -> [a,b,c].
+ * La gramática asocia por la izquierda (comprobado), así que `a+b-c` es
+ * `(a+b)-c` y hay que bajar por el lado izquierdo. Los paréntesis se
+ * atraviesan, de modo que `base+(2+tam+1)` aporta también `tam`. Si el nodo no
+ * es una suma ni una resta, devuelve solo ese nodo.
+ *
+ * La RESTA cuenta igual que la suma, y el signo da lo mismo: lo que importa es
+ * que un valor en orden de red intervenga en la cuenta. Si una longitud de 10
+ * vale 2560 por estar convertida, `base + total - longitud` queda tan mal como
+ * `base + longitud`. Se añadió de forma PREVENTIVA, a petición del profesor:
+ * hay PDUs que se construyen del final hacia el principio y ahí la posición se
+ * resta. No hay ningún caso así en los tres corpus de examen (comprobado: cero
+ * restas en aritmética de buffer dentro de una llamada), así que su único
+ * control vive en sample18. */
+function operandosAditivos(n: Parser.SyntaxNode): Parser.SyntaxNode[] {
+  const e = desenvuelve(n);
+  if (e.type === "binary_expression") {
+    const op = e.childForFieldName("operator")?.text;
+    if (op === "+" || op === "-") {
+      const izq = e.childForFieldName("left");
+      const der = e.childForFieldName("right");
+      if (izq && der) return [...operandosAditivos(izq), ...operandosAditivos(der)];
+    }
+  }
+  return [e];
+}
+
 function bare(func: Parser.SyntaxNode | null | undefined): string | null {
   if (!func) return null;
   return func.text.replace(/\s+/g, "").replace(/^.*::/, "");
@@ -789,6 +854,25 @@ function analyzeExpr(
     // pudo rellenarlo, p.ej. de la red en un helper) → orden desconocido.
     if (base && wasRefPassedBefore(fn, base, index, ctx)) return UNKNOWN0;
   }
+  // Una cadena aditiva arrastra el desorden de CUALQUIERA de sus operandos: si
+  // uno está en orden de red, la cuenta entera queda mal. Esto es lo que
+  // permite seguir el rastro a través de una variable intermedia:
+  //   int total = 8 + tam1 + tam2;   // tam1/tam2 ya convertidas
+  //   write_n(sd, buffer.data(), total);
+  // El informe de corrección marca ese `total` como crítico y antes se perdía,
+  // porque una `binary_expression` caía directamente en el `return HOST0` de
+  // abajo. Se toma el orden del primer operando que esté en orden de red.
+  //
+  // Matiz de honestidad: `8 + 2560` no está literalmente "en orden de red", es
+  // un número corrompido. El veredicto (no sirve para usarlo localmente) es el
+  // correcto y el mensaje se aproxima; afinar más exigiría un tercer estado.
+  const operandos = operandosAditivos(e);
+  if (operandos.length > 1) {
+    for (const op of operandos) {
+      const o = analyzeExpr(fn, op, index, ctx, depth + 1);
+      if (o.order === "network" && o.swaps >= 1) return o;
+    }
+  }
   // strlen(...), .size(), literales, argc, aritmética local... → orden de host, 0 conversiones.
   return HOST0;
 }
@@ -800,21 +884,25 @@ function flagIfNetwork(
   findings: Finding[],
   contexto: string
 ) {
-  if (target.type !== "identifier") return;
+  // Paréntesis y casts alrededor del uso no cambian el valor: `(size_t)tam`
+  // es tan sospechoso como `tam`. Se señala el identificador de dentro, que es
+  // de lo que habla el mensaje.
+  const objetivo = desenvuelve(target);
+  if (objetivo.type !== "identifier") return;
   // El nodo del uso viaja en el contexto para poder descartar mutaciones
   // que estén en una rama mutuamente excluyente con él.
-  const chk: Ctx = { ...ctx, useNode: target };
-  const { order, swaps } = analyze(fn, target.text, target.startIndex, chk, 0);
+  const chk: Ctx = { ...ctx, useNode: objetivo };
+  const { order, swaps } = analyze(fn, objetivo.text, objetivo.startIndex, chk, 0);
   // Solo se avisa si en el punto de uso el valor está en orden de RED y
   // llegó ahí por al menos una conversión de orden de bytes. Un valor de
   // red usado SIN convertir (swaps === 0), como un campo de 1 byte, no es
   // asunto de esta regla y no se marca.
   if (order === "network" && swaps >= 1) {
     findings.push({
-      startIndex: target.startIndex,
-      endIndex: target.endIndex,
+      startIndex: objetivo.startIndex,
+      endIndex: objetivo.endIndex,
       message:
-        `${target.text} se usa aquí ${contexto}, pero en este punto está en orden de red ` +
+        `${objetivo.text} se usa aquí ${contexto}, pero en este punto está en orden de red ` +
         `(big-endian), no en orden de host: revisa las conversiones de orden de bytes ` +
         `(htons/ntohs/htonl/ntohl/std::byteswap) aplicadas antes de usarlo localmente.`,
     });
@@ -849,49 +937,87 @@ export function findByteswapUsoLocalIncorrectoIssues(
             if (sizeArg) flagIfNetwork(fn, ctx, sizeArg, findings, `como tamaño de ${b}()`);
           }
         }
-        // 2) cualquier comparación — cubre for/while/do-while/if y comparaciones sueltas
+        // 2) cualquier comparación — cubre for/while/do-while/if y comparaciones
+        // sueltas. Cada lado se descompone en su cadena aditiva: el límite de un
+        // bucle escrito como `i < cap1 + cap2 + 2` es tan sospechoso como
+        // `i < cap1`, y antes se perdía por tener una suma en vez de un nombre.
         if (n.type === "binary_expression") {
           const op = n.childForFieldName("operator")?.text;
           if (op && COMPARISON_OPS.includes(op)) {
-            const left = n.childForFieldName("left");
-            const right = n.childForFieldName("right");
-            if (left) flagIfNetwork(fn, ctx, left, findings, "en una comparación");
-            if (right) flagIfNetwork(fn, ctx, right, findings, "en una comparación");
+            for (const lado of ["left", "right"] as const) {
+              const nodo = n.childForFieldName(lado);
+              if (!nodo) continue;
+              for (const operando of operandosAditivos(nodo)) {
+                flagIfNetwork(fn, ctx, operando, findings, "en una comparación");
+              }
+            }
           }
         }
-        // 3) offset += X
+        // 3) offset += X y offset -= X, incluido `offset += longitud + 1`.
+        // Cada operando cuenta: si uno está en orden de red, el offset se mueve
+        // mal. (Caso real del corpus que el informe de corrección marca como
+        // crítico y que antes se perdía por ser una suma y no un nombre.)
         if (n.type === "assignment_expression") {
           const op = n.childForFieldName("operator")?.text;
           const right = n.childForFieldName("right");
-          if (op === "+=" && right) {
-            flagIfNetwork(fn, ctx, right, findings, "para avanzar un offset (+=)");
+          if ((op === "+=" || op === "-=") && right) {
+            const contexto =
+              op === "+=" ? "para avanzar un offset (+=)" : "para retroceder un offset (-=)";
+            for (const operando of operandosAditivos(right)) {
+              flagIfNetwork(fn, ctx, operando, findings, contexto);
+            }
           }
         }
-        // 4) desplazamiento dentro de un buffer: array.data() + X, o buffer + X
-        // (puntero plano), pero solo cuando la suma se pasa directamente como
-        // argumento de una llamada (memcpy/read/write...) — así se evita
-        // confundirlo con aritmética normal no relacionada con buffers.
-        if (
-          n.type === "binary_expression" &&
-          n.childForFieldName("operator")?.text === "+" &&
-          n.parent?.type === "argument_list"
-        ) {
-          const left = n.childForFieldName("left");
-          const right = n.childForFieldName("right");
-          const isDataCall = (node: Parser.SyntaxNode | null) => {
-            if (node?.type !== "call_expression") return false;
-            const f = node.childForFieldName("function");
-            return f?.type === "field_expression" && f.childForFieldName("field")?.text === "data";
-          };
-          if ((isDataCall(left ?? null) || left?.type === "identifier") && right) {
-            flagIfNetwork(fn, ctx, right, findings, "como desplazamiento dentro de un buffer (+)");
+        // 4) sumas en las posiciones de argumento cuyo papel conocemos:
+        //    - en posición de BUFFER, todo lo que se suma a la base es un
+        //      desplazamiento: `memcpy(mensaje + 2 + long1, ...)`.
+        //    - en posición de TAMAÑO, cada sumando forma parte de la cuenta de
+        //      bytes: `sendto(sd, m, long1 + long2 + 4, ...)`.
+        //  Las dos formas salieron de entregas reales en las que el estudiante
+        //  convierte la longitud para enviarla y luego la reutiliza en la
+        //  aritmética del buffer: escribe y envía muy fuera de rango (una
+        //  longitud de 10 byteswapeada vale 2560).
+        //
+        //  El tamaño solo se mira aquí cuando es una SUMA; el caso del
+        //  identificador suelto ya lo cubre el punto 1 para SIZE_FUNCS, y así
+        //  no se avisa dos veces de lo mismo.
+        if (n.type === "call_expression") {
+          const papeles = bare(n.childForFieldName("function"));
+          const p = papeles ? PAPELES_DE_ARGUMENTO[papeles] : undefined;
+          if (p) {
+            const args = n.childForFieldName("arguments")?.namedChildren ?? [];
+            for (const pos of p.buffer) {
+              const arg = args[pos];
+              // El primer operando es la base (el propio buffer); lo que se le
+              // suma o resta son los desplazamientos. La base se salta POR
+              // POSICIÓN, así que da igual su forma: `mensaje`, `buf.data()`,
+              // un cast o un campo de struct funcionan igual.
+              if (arg) {
+                for (const op of operandosAditivos(arg).slice(1)) {
+                  flagIfNetwork(fn, ctx, op, findings, "como desplazamiento dentro de un buffer");
+                }
+              }
+            }
+            const argTam = args[p.tamano];
+            if (argTam) {
+              const operandos = operandosAditivos(argTam);
+              if (operandos.length > 1) {
+                for (const op of operandos) {
+                  flagIfNetwork(fn, ctx, op, findings, `como parte del tamaño de ${papeles}()`);
+                }
+              }
+            }
           }
         }
-        // 5) índice de un array: array[X]
+        // 5) índice de un array: array[X], incluido `mensaje[i - cap - 2]`.
         if (n.type === "subscript_expression") {
           const idxList = n.namedChildren.find((c) => c.type === "subscript_argument_list");
           const idx = idxList?.namedChildren[0];
-          if (idx) flagIfNetwork(fn, ctx, idx, findings, "como índice de un array ([X])");
+          if (idx) {
+            for (const operando of operandosAditivos(idx)) {
+              flagIfNetwork(fn, ctx, operando, findings, "como índice de un array ([X])");
+            }
+          }
         }
         for (const child of n.namedChildren) walk(child);
       }
