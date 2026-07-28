@@ -329,3 +329,30 @@ void bien_comparacion_e_indice_sin_convertir(const char* texto, char* buffer, si
     }
     buffer[i - longitud] = 0;
 }
+
+// --- El tamaño como nombre suelto, en las funciones de E/S de POSIX ---
+// Antes solo se vigilaba el tamaño de memcpy/read_n/write_n, así que
+// `sendto(sd, b, l, ...)` con `l` ya convertida se iba sin avisar mientras que
+// `sendto(sd, b, l+2, ...)` sí avisaba. Ahora la posición del tamaño la decide
+// una sola tabla y las dos formas se tratan igual.
+
+// BUG: la longitud convertida es el tamaño de un sendto, a pelo.
+void bug_tamano_suelto_sendto(int fd, const char* texto, char* mensaje) {
+    uint16_t longitud = strlen(texto);
+    longitud = htons(longitud);
+    sendto(fd, mensaje, longitud, 0, mensaje, 4);
+}
+
+// BUG: lo mismo con write(), que tampoco se miraba.
+void bug_tamano_suelto_write(int fd, const char* texto, char* mensaje) {
+    uint16_t longitud = strlen(texto);
+    longitud = htons(longitud);
+    write(fd, mensaje, longitud);
+}
+
+// CORRECTO: mismas llamadas sin conversión previa. No deben avisar.
+void bien_tamano_suelto_sin_convertir(int fd, const char* texto, char* mensaje) {
+    uint16_t longitud = strlen(texto);
+    sendto(fd, mensaje, longitud, 0, mensaje, 4);
+    write(fd, mensaje, longitud);
+}

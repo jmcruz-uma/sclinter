@@ -68,7 +68,7 @@ import Parser from "web-tree-sitter";
 //     ampliar la regla 34, no para ésta. Se dejan como están.
 //
 //  D) 1 aviso — ÚNICO falso positivo, ya corregido: una recepción correcta
-//     escrita con `mempcpy` (ver `EXTRACT_FUNCS` y `SIZE_FUNCS`). El informe
+//     escrita con `mempcpy` (ver `EXTRACT_FUNCS` y `PAPELES_DE_ARGUMENTO`). El informe
 //     manual coincide: "mempcpy en vez de memcpy — extensión GNU; el valor de
 //     retorno se descarta, funciona igual".
 //
@@ -83,13 +83,12 @@ export interface Finding {
 }
 
 const SWAP_FUNCS = ["htons", "ntohs", "htonl", "ntohl", "byteswap"];
-/** Funciones cuyo TERCER argumento es un tamaño y por tanto se vigila.
- * `mempcpy` va aquí por coherencia con `EXTRACT_FUNCS`: es `memcpy` con otro
- * valor de retorno, y dejarla fuera haría que el mismo bug se escapara solo
- * por haber escrito el otro nombre. Sobre el corpus el efecto es nulo (la
- * única llamada a `mempcpy` lleva un tamaño literal), así que el caso de
- * control vive en `sample34`. `memccpy` NO entra — ver `EXTRACT_FUNCS`. */
-const SIZE_FUNCS = ["memcpy", "mempcpy", "read_n", "write_n"];
+// Ya no hay una lista aparte de "funciones con tamaño": la única fuente de
+// verdad es PAPELES_DE_ARGUMENTO, más abajo. Antes existía un SIZE_FUNCS con
+// solo memcpy/read_n/write_n —así desde el commit inicial del proyecto y sin
+// razón documentada— que dejaba fuera a read/write/send/recv/sendto/recvfrom;
+// eso hacía que `sendto(sd, b, l1+l2, ...)` avisara y `sendto(sd, b, l1, ...)`
+// no, que es una incoherencia difícil de explicar a un estudiante.
 /** Funciones que EXTRAEN un valor de un buffer con la firma `(dst, src, n)`:
  * ver `memcpy(&longitud, almacen, 2)` es lo que permite saber que `longitud`
  * salió de un buffer leído de la red. `mempcpy` es la extensión GNU de
@@ -927,13 +926,15 @@ export function findByteswapUsoLocalIncorrectoIssues(
       const ctx: Ctx = { readBufs: readBufferNames(fn), refParams, funcs, resumenes };
 
       function walk(n: Parser.SyntaxNode) {
-        // 1) tercer argumento de memcpy/read_n/write_n
+        // 1) el argumento de tamaño, cuando es un nombre suelto. Qué posición
+        // ocupa lo dice la MISMA tabla que usa el punto 4, así que las dos
+        // comprobaciones no pueden discrepar sobre qué es un tamaño.
         if (n.type === "call_expression") {
-          const func = n.childForFieldName("function");
-          const b = bare(func);
-          if (func && b && SIZE_FUNCS.includes(b)) {
+          const b = bare(n.childForFieldName("function"));
+          const p = b ? PAPELES_DE_ARGUMENTO[b] : undefined;
+          if (p) {
             const args = n.childForFieldName("arguments");
-            const sizeArg = args?.namedChildren[2];
+            const sizeArg = args?.namedChildren[p.tamano];
             if (sizeArg) flagIfNetwork(fn, ctx, sizeArg, findings, `como tamaño de ${b}()`);
           }
         }
@@ -979,7 +980,7 @@ export function findByteswapUsoLocalIncorrectoIssues(
         //  longitud de 10 byteswapeada vale 2560).
         //
         //  El tamaño solo se mira aquí cuando es una SUMA; el caso del
-        //  identificador suelto ya lo cubre el punto 1 para SIZE_FUNCS, y así
+        //  identificador suelto ya lo cubre el punto 1 con esa misma tabla, y así
         //  no se avisa dos veces de lo mismo.
         if (n.type === "call_expression") {
           const papeles = bare(n.childForFieldName("function"));
