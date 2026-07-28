@@ -26,6 +26,24 @@ void bug_alfa_argv2(int argc, char** argv) {
     (void)longitud;
 }
 
+// --- ALFA: array de punteros LOCAL. sizeof da N*8, no 8, y lo que está mal
+// es la declaración. Mensaje propio. ---
+void bug_alfa_array_de_punteros(int fd) {
+    char *cadena[10];
+    size_t n = sizeof(cadena);
+    read_n(fd, cadena, n);
+}
+
+// --- CONTROL DELICADO: `char *argv[]` tiene la MISMA forma, pero como
+// PARÁMETRO decae a char** y ahí sizeof sí vale 8. Debe seguir dando el
+// mensaje de puntero, no el de array de punteros. En el corpus esta forma
+// aparece 314 veces, así que equivocarse aquí sería caro. ---
+void bug_alfa_argv_es_parametro(int argc, char *argv[]) {
+    size_t n = sizeof(argv);
+    (void)argc;
+    (void)n;
+}
+
 // --- CORRECTO: sizeof sobre un valor no-puntero ---
 void bien_alfa_no_puntero(uint16_t valor) {
     size_t n = sizeof(valor);

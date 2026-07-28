@@ -35,8 +35,23 @@ function enclosingFunction(node: Parser.SyntaxNode): Parser.SyntaxNode | null {
 }
 
 /** ¿El tipo declarado de `name` en la función contiene un pointer_declarator en algún nivel? */
-function declaredTypeIsPointer(functionNode: Parser.SyntaxNode, name: string): boolean {
-  let result = false;
+/** Qué clase de puntero se declaró, para que el mensaje diga la verdad:
+ *  - "puntero": `char* p;` — `sizeof` da el tamaño del puntero, 8 bytes.
+ *  - "array-de-punteros": `char *cadena[N];` — `sizeof` da N*8, NO 8, y lo que
+ *    está mal casi seguro es la declaración, no el `sizeof`.
+ *
+ * CUIDADO con la distinción, que es la razón de separar los dos casos: como
+ * PARÁMETRO, `char *argv[]` decae a `char**` y ahí `sizeof` sí vale 8, así que
+ * el segundo mensaje sería falso. Por eso "array-de-punteros" solo se devuelve
+ * para declaraciones locales (`declaration`), nunca para
+ * `parameter_declaration`. En el corpus `char *argv[]` aparece 314 veces. */
+type ClaseDePuntero = "puntero" | "array-de-punteros";
+
+function declaredTypeIsPointer(
+  functionNode: Parser.SyntaxNode,
+  name: string
+): ClaseDePuntero | null {
+  let result: ClaseDePuntero | null = null;
   function walk(n: Parser.SyntaxNode) {
     if (result) return;
     if (n.type === "declaration" || n.type === "parameter_declaration") {
@@ -44,11 +59,15 @@ function declaredTypeIsPointer(functionNode: Parser.SyntaxNode, name: string): b
       if (declNode) {
         let cur: Parser.SyntaxNode | null = declNode;
         let sawPointer = false;
+        let sawArray = false;
         while (cur && cur.type !== "identifier") {
           if (cur.type === "pointer_declarator") sawPointer = true;
+          if (cur.type === "array_declarator") sawArray = true;
           cur = cur.childForFieldName("declarator") ?? cur.namedChildren[0] ?? null;
         }
-        if (cur?.text === name && sawPointer) result = true;
+        if (cur?.text === name && sawPointer) {
+          result = sawArray && n.type === "declaration" ? "array-de-punteros" : "puntero";
+        }
       }
     }
     for (const child of n.namedChildren) walk(child);
@@ -78,13 +97,24 @@ export function findSizeofPunteroIssues(
         });
       } else if (value?.type === "identifier") {
         const fn = enclosingFunction(n);
-        if (fn && declaredTypeIsPointer(fn, value.text)) {
+        const clase = fn ? declaredTypeIsPointer(fn, value.text) : null;
+        if (clase === "puntero") {
           findings.push({
             startIndex: n.startIndex,
             endIndex: n.endIndex,
             message:
               `sizeof(${value.text}) mide el puntero (normalmente 8 bytes), no lo que apunta — ` +
               `${value.text} está declarado como puntero. ¿Querías el tamaño real de lo que hay detrás?`,
+          });
+        } else if (clase === "array-de-punteros") {
+          findings.push({
+            startIndex: n.startIndex,
+            endIndex: n.endIndex,
+            message:
+              `${value.text} está declarado como un array de punteros (${value.text}[...] con *), ` +
+              `no como un buffer de caracteres, así que sizeof(${value.text}) mide todos esos ` +
+              `punteros juntos. Si lo que querías es guardar una secuencia de caracteres, la ` +
+              `declaración es char ${value.text}[...].`,
           });
         }
       }

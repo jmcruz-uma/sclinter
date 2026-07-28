@@ -20,15 +20,27 @@ export interface Finding {
 
 const FUNCS = ["memcpy", "read", "read_n", "recv", "recvfrom", "write", "write_n", "send", "sendto"];
 
-/** Nombres de struct/class definidos en el fichero que tienen algún campo std::string/std::vector. */
-function riskyStructNames(root: Parser.SyntaxNode): Set<string> {
-  const names = new Set<string>();
+/** Por qué un struct no se puede volcar entero: porque tiene un contenedor
+ * (que guarda un puntero al heap) o porque tiene un PUNTERO CRUDO. El motivo
+ * viaja hasta el mensaje, que no puede decir lo mismo en los dos casos. */
+type Motivo = "contenedor" | "puntero";
+
+/** Nombres de struct/class definidos en el fichero que NO se pueden enviar
+ * enteros, con el motivo. Además de `std::string`/`std::vector`, cuenta un
+ * campo puntero crudo (`char* dom;`): enviarlo manda la dirección, que al otro
+ * lado no significa nada — es el mismo error, y en un examen se vio escrito de
+ * las dos formas. Un campo ARRAY (`char buf[10]`) sí se puede enviar y no
+ * cuenta: se distingue por el declarador (`pointer_declarator` frente a
+ * `array_declarator`, comprobado sobre el árbol). El contenedor manda cuando
+ * hay de los dos, porque su mensaje es el más específico. */
+function riskyStructNames(root: Parser.SyntaxNode): Map<string, Motivo> {
+  const names = new Map<string, Motivo>();
   function walk(n: Parser.SyntaxNode) {
     if (n.type === "struct_specifier" || n.type === "class_specifier") {
       const name = n.childForFieldName("name")?.text;
       const body = n.childForFieldName("body");
       if (name && body) {
-        let risky = false;
+        let motivo: Motivo | null = null;
         for (const field of body.namedChildren) {
           if (field.type !== "field_declaration") continue;
           const typeText = field.childForFieldName("type")?.text.replace(/\s+/g, "") ?? "";
@@ -37,11 +49,16 @@ function riskyStructNames(root: Parser.SyntaxNode): Set<string> {
             typeText === "string" ||
             /^(std::)?vector<.+>$/.test(typeText)
           ) {
-            risky = true;
+            motivo = "contenedor";
             break;
           }
+          // `char* dom;` y `char *a, *b;` — basta con que alguno de los
+          // declaradores del campo sea un puntero.
+          if (field.namedChildren.some((c) => c.type === "pointer_declarator")) {
+            motivo = "puntero";
+          }
         }
-        if (risky) names.add(name);
+        if (motivo) names.set(name, motivo);
       }
     }
     for (const child of n.namedChildren) walk(child);
@@ -79,14 +96,20 @@ export function findStructConContenedorDireccionIssues(
           const target = arg.childForFieldName("argument");
           if (target?.type !== "identifier") continue;
           const type = tipoEnEsePunto(arg, target.text);
-          if (type && riskyStructs.has(type)) {
+          const motivo = type ? riskyStructs.get(type) : undefined;
+          if (type && motivo) {
             findings.push({
               startIndex: arg.startIndex,
               endIndex: arg.endIndex,
               message:
-                `&${target.text} es un ${type}, que tiene algún campo std::string/std::vector — ` +
-                `${bare}() volcará los punteros internos de ese campo, no su contenido de texto. ` +
-                `Hay que serializar/deserializar campo a campo, no el struct entero de una vez.`,
+                motivo === "contenedor"
+                  ? `&${target.text} es un ${type}, que tiene algún campo std::string/std::vector — ` +
+                    `${bare}() volcará los punteros internos de ese campo, no su contenido de texto. ` +
+                    `Hay que serializar/deserializar campo a campo, no el struct entero de una vez.`
+                  : `&${target.text} es un ${type}, que tiene algún campo puntero — ${bare}() enviará ` +
+                    `la dirección que guarda ese puntero, no lo que hay detrás, y esa dirección no ` +
+                    `significa nada en el otro extremo. Hay que serializar/deserializar campo a campo, ` +
+                    `no el struct entero de una vez.`,
             });
           }
         }

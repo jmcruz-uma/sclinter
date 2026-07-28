@@ -52,6 +52,20 @@ void struct_plana(int fd) {
     read_n(fd, &pdu, sizeof(pdu));
 }
 
+// Un campo ARRAY sí se puede enviar entero: los bytes están dentro del struct,
+// no detrás de un puntero. No debe avisar (se distingue por el declarador:
+// array_declarator, no pointer_declarator).
+struct PduConArray {
+    uint16_t tam;
+    char nombre[16];
+};
+static_assert(sizeof(PduConArray) == 18);
+
+void struct_con_array(int fd) {
+    PduConArray pdu;
+    read_n(fd, &pdu, sizeof(pdu));
+}
+
 // ============================================================
 // Deben AVISAR
 // ============================================================
@@ -59,6 +73,21 @@ void struct_plana(int fd) {
 void struct_con_string(int fd) {
     Pdu pdu;
     read_n(fd, &pdu, 8);
+}
+
+// Campo PUNTERO CRUDO: enviar el struct manda la dirección, que al otro lado
+// no significa nada. Es el mismo error que con std::string, escrito de otra
+// forma, y así se vio en una entrega real. El mensaje debe hablar de punteros,
+// no de contenedores.
+struct PduConPuntero {
+    uint16_t tam;
+    char *nombre;
+};
+static_assert(sizeof(PduConPuntero) == 16);
+
+void struct_con_puntero(int fd) {
+    PduConPuntero pdu;
+    read_n(fd, &pdu, sizeof(pdu));
 }
 
 void struct_con_vector(int fd) {
