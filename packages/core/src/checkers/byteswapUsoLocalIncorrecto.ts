@@ -103,7 +103,11 @@ const SIZE_FUNCS = ["memcpy", "mempcpy", "read_n", "write_n"];
  * `(dst, src, c, n)` — el tercer argumento es un carácter de parada, no un
  * tamaño. Tratarla como `memcpy` sería acertar de casualidad en las llamadas
  * de tres argumentos (que además están mal escritas) y equivocarse en las
- * bien escritas. */
+ * bien escritas.
+ *
+ * Que aquí se reconozca `mempcpy` NO significa que se acepte: la regla
+ * `mempcpy-extension-gnu` la prohíbe por normativa. Reconocerla es lo que
+ * evita acusar de un error de orden de bytes a quien lo tiene bien. */
 const EXTRACT_FUNCS = ["memcpy", "mempcpy"];
 const READ_FUNCS = ["read", "read_n", "readn", "recv", "recvfrom"];
 const COMPARISON_OPS = ["==", "!=", "<", "<=", ">", ">="];

@@ -6,6 +6,7 @@ import { findPollSizeofArgIssues } from "../checkers/pollSizeofArg";
 import { findMemcpyContainerAddressDestinationIssues } from "../checkers/memcpyContainerAddressDestination";
 import { findMemcpyArrayOverflowIssues } from "../checkers/memcpyArrayOverflow";
 import { findMemcpyStringDataProhibitedIssues } from "../checkers/memcpyStringDataProhibited";
+import { findMempcpyExtensionGnuIssues } from "../checkers/mempcpyExtensionGnu";
 import { findMemcpyArrayAddressStyleIssues } from "../checkers/memcpyArrayAddressStyle";
 import { findSignalKillArgsSwappedIssues } from "../checkers/signalKillArgsSwapped";
 import { findSinPortNoHtonsIssues, findConversionEscondidaEnMacroIssues } from "../checkers/sinPortNoHtons";
@@ -94,6 +95,11 @@ export const RULES: Rule[] = [
     id: "memcpy-array-direccion-estilo",
     titulo: "&std::array en memcpy — correcto, pero se pide .data() por consistencia de estilo",
     run: findMemcpyArrayAddressStyleIssues,
+  },
+  {
+    id: "mempcpy-extension-gnu",
+    titulo: "mempcpy — extensión de GNU fuera del estándar (no existe std::mempcpy); además se escapa de las reglas que reconocen memcpy por su nombre",
+    run: findMempcpyExtensionGnuIssues,
   },
   {
     id: "signal-kill-args-invertidos",
