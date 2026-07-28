@@ -167,9 +167,17 @@ export const RULES: Rule[] = [
   },
   {
     id: "read-desde-teclado",
-    titulo: "read(0/STDIN_FILENO, ...) — prohibido siempre por normativa de la asignatura, cualquiera que sea el tipo del destino",
+    titulo: "read(0/STDIN_FILENO, ...) — prohibido en C++ por normativa de la asignatura, cualquiera que sea el tipo del destino",
     run: findReadDesdeTecladoIssues,
-    cppOnly: true, // la alternativa que se sugiere (std::cin/std::getline) no existe en C
+    // cppOnly de verdad, no por el mensaje: en C leer del teclado con
+    // read(0,...) NO está prohibido — en cursos donde no se da scanf puede ser
+    // la única forma que conocen. La prohibición es de C++, donde sí hay
+    // std::cin/std::getline. OJO: esto NO es el mismo caso que
+    // `read-n-en-teclado`, que se marcó cppOnly por error y hubo que revertir
+    // (allí read_n() sobre el teclado es un bug igual de real en C, y lo que
+    // había que arreglar era el mensaje). Aquí la diferencia es normativa, no
+    // de redacción, así que el cppOnly se queda.
+    cppOnly: true,
   },
   {
     id: "read-n-en-teclado",

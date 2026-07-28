@@ -61,3 +61,46 @@ void bien_beta_con_aritmetica(int sd) {
     std::vector<uint16_t> datos(10);
     write_n(sd, datos.data(), datos.size() * sizeof(uint16_t));
 }
+
+// --- BETA: el TAMAÑO del contenedor no es un literal ---
+// El tipo de elemento se resuelve sobre el árbol, así que da igual la forma
+// que tenga el tamaño. Antes se sacaba con una regex que solo contemplaba un
+// literal decimal y estos contenedores de 1 byte se leían como si no lo
+// fueran, avisando sobre código correcto.
+
+#define TAM_BUFFER 64
+
+// CORRECTO: elementos de 1 byte, tamaño con sizeof. No debe avisar.
+void bien_beta_tamano_sizeof(int sd, char** argv) {
+    std::array<char, sizeof(uint32_t) * 2> datos{};
+    write_n(sd, datos.data(), datos.size());
+    (void)argv;
+}
+
+// CORRECTO: elementos de 1 byte, tamaño con una constante con nombre.
+// No debe avisar.
+void bien_beta_tamano_constante(int sd) {
+    std::array<uint8_t, TAM_BUFFER> datos{};
+    read_n(sd, datos.data(), datos.size());
+}
+
+// CORRECTO: elementos de 1 byte, tamaño con aritmética. No debe avisar.
+void bien_beta_tamano_aritmetico(int sd) {
+    const int n = 10;
+    std::array<char, n + 1> datos{};
+    write_n(sd, datos.data(), datos.size());
+}
+
+// Control: mismo tamaño no literal, pero elementos de 4 bytes. DEBE avisar —
+// si el arreglo se hubiera pasado de permisivo callando ante cualquier tamaño
+// que no sepa leer, este caso se perdería.
+void bug_beta_tamano_sizeof_no_byte(int sd) {
+    std::array<uint32_t, sizeof(uint32_t)> datos{};
+    write_n(sd, datos.data(), datos.size());
+}
+
+// Control: tamaño con constante con nombre y elementos de 2 bytes. DEBE avisar.
+void bug_beta_tamano_constante_no_byte(int sd) {
+    std::array<uint16_t, TAM_BUFFER> datos{};
+    read_n(sd, datos.data(), datos.size());
+}

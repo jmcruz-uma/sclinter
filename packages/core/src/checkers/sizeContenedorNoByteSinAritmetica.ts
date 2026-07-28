@@ -38,6 +38,39 @@ function enclosingFunction(node: Parser.SyntaxNode): Parser.SyntaxNode | null {
   return null;
 }
 
+/** Tipo de elemento de un `std::array<T,N>` / `std::vector<T>`, resuelto
+ * SOBRE EL ÁRBOL: el tipo es un `template_type` cuyo `arguments` es un
+ * `template_argument_list` cuyo PRIMER hijo con nombre es el `type_descriptor`
+ * del elemento; lo que venga detrás (el tamaño) da igual y no se mira.
+ *
+ * Antes esto se sacaba con una expresión regular sobre el texto del tipo, con
+ * el tamaño escrito como `,\s*\d+` — es decir, SOLO un literal decimal. Con
+ * cualquier otra forma de tamaño (`sizeof(...)`, una constante con nombre,
+ * aritmética) el grupo opcional no casaba, el `.+?` perezoso se tragaba la
+ * coma y el "tipo de elemento" salía como `char,sizeof(argv[3])` — que no
+ * está en ONE_BYTE_TYPES, así que la regla avisaba sobre contenedores de
+ * `char`, justo los que nunca debe marcar. Falso positivo real del corpus.
+ * Es la misma lección que en `memcpy-destino-repetido`: para leer la
+ * estructura del código, el árbol; la regex es para texto. */
+function tipoDeElemento(typeNode: Parser.SyntaxNode): string | null {
+  // `std::array<...>` llega como qualified_identifier que envuelve al
+  // template_type; `array<...>` a secas (tras `using namespace std`) llega
+  // como template_type directamente.
+  let plantilla: Parser.SyntaxNode | null = typeNode;
+  if (plantilla.type === "qualified_identifier") {
+    plantilla = plantilla.childForFieldName("name");
+  }
+  if (plantilla?.type !== "template_type") return null;
+
+  const nombre = plantilla.childForFieldName("name")?.text;
+  if (nombre !== "array" && nombre !== "vector") return null;
+
+  const args = plantilla.childForFieldName("arguments");
+  const primero = args?.namedChildren[0];
+  if (primero?.type !== "type_descriptor") return null;
+  return primero.text.replace(/\s+/g, "");
+}
+
 /** Nombre -> tipo de elemento (normalizado) para std::array<T,N>/std::vector<T> declarados en la función. */
 function containerElementTypes(functionNode: Parser.SyntaxNode): Map<string, string> {
   const result = new Map<string, string>();
@@ -46,14 +79,13 @@ function containerElementTypes(functionNode: Parser.SyntaxNode): Map<string, str
       const typeNode = n.childForFieldName("type");
       const declNode = n.childForFieldName("declarator");
       if (typeNode && declNode) {
-        const typeText = typeNode.text.replace(/\s+/g, "");
-        const m = typeText.match(/^(?:std::)?(?:array|vector)<(.+?)(?:,\s*\d+)?>$/);
-        if (m) {
+        const elemento = tipoDeElemento(typeNode);
+        if (elemento) {
           let cur: Parser.SyntaxNode | null = declNode;
           while (cur && cur.type !== "identifier") {
             cur = cur.childForFieldName("declarator") ?? cur.namedChildren[0] ?? null;
           }
-          if (cur) result.set(cur.text, m[1].replace(/\s+/g, ""));
+          if (cur) result.set(cur.text, elemento);
         }
       }
     }
