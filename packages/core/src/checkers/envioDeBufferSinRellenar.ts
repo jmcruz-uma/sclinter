@@ -84,7 +84,22 @@ function structsTotalmenteInicializados(root: Parser.SyntaxNode): Set<string> {
 
 /** Declaraciones locales SIN inicializador: nombre → nodo de la declaración.
  * Las que llevan inicializador (`init_declarator`) quedan fuera a propósito,
- * y los parámetros tampoco entran (los rellena quien llama). */
+ * y los parámetros tampoco entran (los rellena quien llama).
+ *
+ * `function_declarator` TAMBIÉN queda fuera, y esto no es evidente. Un
+ * constructor con paréntesis (`std::string dominio(argv[3]);`) se parsea así,
+ * no como `init_declarator`: tree-sitter no tiene tabla de símbolos, y en C++
+ * `T(x);` es ambiguo si no se sabe si `T` es un tipo — `argv[3]` es una
+ * declaración de parámetro perfectamente válida (parámetro sin nombre, de tipo
+ * `argv`, array de 3). Sin poder resolverlo, la gramática elige la rama de
+ * función. Con un literal entre los argumentos (`std::string d(argv[3], 3);`)
+ * sí desambigua, porque un `3` no puede ser un parámetro, y entonces vuelve a
+ * salir `init_declarator`; de ahí que el fallo apareciera solo en unas
+ * declaraciones y no en otras.
+ *
+ * Tres falsos positivos reales del corpus salieron de aquí. Declarar una
+ * función dentro del cuerpo de otra es legal pero no se ve en un examen, así
+ * que darlo por inicializado es seguro: el error posible es callar de más. */
 function declaracionesSinInicializador(fnDef: Parser.SyntaxNode): Map<string, Parser.SyntaxNode> {
   const declaraciones = new Map<string, Parser.SyntaxNode>();
   recorre(fnDef, (n) => {
@@ -92,7 +107,8 @@ function declaracionesSinInicializador(fnDef: Parser.SyntaxNode): Map<string, Pa
     for (let i = 0; i < n.childCount; i++) {
       if (n.fieldNameForChild(i) !== "declarator") continue;
       const declarador = n.child(i);
-      if (!declarador || declarador.type === "init_declarator") continue;
+      if (!declarador) continue;
+      if (declarador.type === "init_declarator" || declarador.type === "function_declarator") continue;
       let cur: Parser.SyntaxNode | null = declarador;
       while (cur && cur.type !== "identifier") {
         cur = cur.childForFieldName("declarator") ?? cur.namedChildren[0] ?? null;

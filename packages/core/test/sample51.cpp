@@ -1,6 +1,7 @@
 #include <cstring>
 #include <cstdint>
 #include <array>
+#include <string>
 #include <sys/types.h>
 
 // sample51 — envio-de-buffer-sin-rellenar.
@@ -93,6 +94,26 @@ void rellenado_con_read(int sd, int otro_fd) {
 void declarado_con_inicializador(int sd) {
     Pdu pdu{};
     write_n(sd, &pdu, sizeof(pdu));
+}
+
+// Construido con paréntesis. OJO, esto no es una sutileza de estilo: con un
+// solo argumento (o con argumentos que podrían leerse como declaraciones de
+// parámetros) tree-sitter parsea la declaración como `function_declarator` y
+// no como `init_declarator`, porque sin tabla de símbolos `T(x);` es ambiguo
+// en C++. Estos tres casos daban falso positivo sobre entregas reales.
+void construido_con_parentesis(int sd, char **argv) {
+    std::string dominio(argv[3]);
+    write_n(sd, dominio.data(), dominio.size());
+}
+
+void construido_con_parentesis_dos_args(int sd, char **argv, int longitud) {
+    std::string dominio(argv[3], longitud);
+    write_n(sd, dominio.data(), dominio.size());
+}
+
+void construido_con_parentesis_y_literal(int sd, char **argv) {
+    std::string dominio(argv[3], 3);
+    write_n(sd, dominio.data(), dominio.size());
 }
 
 // Struct con TODOS los campos inicializados por defecto.
