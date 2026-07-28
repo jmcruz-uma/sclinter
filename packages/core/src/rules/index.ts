@@ -34,6 +34,7 @@ import { findSizeEnVezDeOffsetIssues } from "../checkers/sizeEnVezDeOffset";
 import { findSizeContenedorNoByteSinAritmeticaIssues } from "../checkers/sizeContenedorNoByteSinAritmetica";
 import { findIoVectorDataIssues } from "../checkers/ioVectorData";
 import { findErrnoAsignacionEnVezDeComparacionIssues } from "../checkers/errnoAsignacionEnVezDeComparacion";
+import { findMemcpyInvertidoAlExtraerIssues } from "../checkers/memcpyInvertidoAlExtraer";
 
 export interface Rule {
   id: string;
@@ -244,5 +245,10 @@ export const RULES: Rule[] = [
     id: "errno-asignacion-en-vez-de-comparacion",
     titulo: "errno = X dentro de una condición o booleana (se quería errno == X); asignar a errno fuera de una guarda sí es legítimo",
     run: findErrnoAsignacionEnVezDeComparacionIssues,
+  },
+  {
+    id: "memcpy-invertido-al-extraer",
+    titulo: "memcpy(buffer_recibido, &campo, n) — argumentos invertidos al extraer: machaca los datos recibidos y el campo se queda sin valor",
+    run: findMemcpyInvertidoAlExtraerIssues,
   },
 ];
