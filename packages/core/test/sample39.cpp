@@ -14,6 +14,13 @@
 // La regla de oro es que el resumen solo puede REFINAR ese "desconocido",
 // nunca inventar certeza: ante cualquier ambigüedad se vuelve a callar, que es
 // el comportamiento que había antes.
+//
+// SEGUNDA FASE (doble byteswap): los resúmenes componen SECUENCIAS —la última
+// mutación encadenada hacia atrás, no un acuerdo entre todas— y el caso "lo
+// rellena de red y además lo convierte" pasa a tener resumen CONDICIONAL: si
+// tocó el parámetro lo dejó en orden de host, y si no lo tocó lo dejó como
+// estaba. El veredicto lo da el llamante uniendo los dos caminos, que es lo
+// único demostrable sin suponer que el relleno se ejecuta siempre.
 
 ssize_t read_n(int fd, void *buf, size_t n);
 
@@ -50,11 +57,15 @@ void a_veces_red(int fd, uint16_t &v, bool desde_red) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Helper con resumen CONDICIONAL: "si lo tocó, lo dejó en orden de host"
+// ---------------------------------------------------------------------------
+
 // Lo rellena de red Y ADEMÁS lo convierte (el helper del enunciado, que
-// entrega el dato "ya en formato nativo"). Son dos mutaciones EN SECUENCIA, y
-// el resumen exige hoy que todas coincidan: discrepan, así que sale
-// `desconocido`. Ahí queda aplazado el DOBLE byteswap; habilitarlo exige
-// encadenar la última mutación hacia atrás en vez de exigir acuerdo.
+// entrega el dato "ya en formato nativo"). Son dos mutaciones EN SECUENCIA:
+// el resumen sigue la última hacia atrás y sale "de red y luego convertido",
+// o sea orden de host. Como no se demuestra que el relleno se ejecute siempre,
+// el resumen es CONDICIONAL y lo resuelve el llamante.
 void lee_y_convierte(int fd, uint16_t &v) {
     read_n(fd, &v, sizeof(v));
     v = std::byteswap(v);
@@ -113,11 +124,34 @@ void calla_ambiguo(int fd, char *buffer, const char *origen, bool desde_red) {
     memcpy(buffer, origen, v);
 }
 
-// El doble byteswap (el helper ya convirtió, y aquí se vuelve a convertir)
-// deja el valor otra vez en orden de red. Es un bug real, pero su detección
-// está fuera del alcance de esta fase: por ahora debe callar.
-void calla_doble_swap_pendiente(int fd, char *buffer, const char *origen) {
+// ---------------------------------------------------------------------------
+// AVISA: DOBLE byteswap — el helper ya convirtió y aquí se vuelve a convertir
+// ---------------------------------------------------------------------------
+
+// El resumen de `lee_y_convierte` es condicional ("si lo tocó, quedó en
+// host"), y aquí los dos caminos coinciden: si lo rellenó, v está en host; si
+// no lo rellenó, v conserva el 0 de la declaración, que también es orden de
+// host. Por los dos caminos, el byteswap de la línea siguiente la deja en
+// orden de red justo antes de usarla como tamaño. No hace falta saber qué
+// rama del helper se ejecutó.
+void bug_doble_swap(int fd, char *buffer, const char *origen) {
     uint16_t v = 0;
+    lee_y_convierte(fd, v);
+    v = std::byteswap(v);
+    memcpy(buffer, origen, v);
+}
+
+// ---------------------------------------------------------------------------
+// CALLA: resumen condicional cuyos dos caminos DISCREPAN
+// ---------------------------------------------------------------------------
+
+// Aquí v ya venía de la red antes de la llamada. "Lo tocó" deja host y "no lo
+// tocó" deja red: el join no concluye y se mantiene el silencio. Es el control
+// de que la disyunción no se cierra sola — solo se cierra cuando las dos ramas
+// dicen lo mismo.
+void calla_join_discrepante(int fd, char *buffer, const char *origen) {
+    uint16_t v = 0;
+    read_n(fd, &v, sizeof(v));
     lee_y_convierte(fd, v);
     v = std::byteswap(v);
     memcpy(buffer, origen, v);

@@ -73,8 +73,43 @@ import Parser from "web-tree-sitter";
 //     retorno se descarta, funciona igual".
 //
 // Conclusión: fuera del `mempcpy`, la regla no tenía falsos positivos sobre el
-// corpus. Sigue pendiente el DOBLE byteswap (ver la nota de FASE ACTUAL más
-// abajo, en `resumenParametro`).
+// corpus.
+//
+// ---------------------------------------------------------------------------
+// DOBLE BYTESWAP: por qué se puede acusar sin saber qué rama corrió
+// ---------------------------------------------------------------------------
+//
+// El helper del enunciado rellena el parámetro de la red y lo convierte, así
+// que lo entrega en orden de host; si el llamante vuelve a convertirlo, queda
+// otra vez en orden de red. Detectarlo se aplazó porque el resumen del callee
+// se diseñó para justificar SILENCIO y aquí pasa a justificar una ACUSACIÓN, y
+// el relleno del helper es CONDICIONAL: en la solución oficial vive dentro de
+// un `else if (pfd[1].revents)` y de sus diez salidas solo tres tocan el
+// parámetro. Lo demostrable no es "al volver está en host" sino "SI lo tocó,
+// quedó en host". Apoyarse en el invariante del enunciado ("evento válido ⟹
+// campos rellenos") se descartó explícitamente: la herramienta no lo comprueba.
+//
+// Lo que cierra el hueco es dar el veredicto en el LLAMANTE y unir los dos
+// caminos, en vez de exigir certeza al callee:
+//
+//   - si el helper lo tocó  → orden de host (rellenó de red y convirtió);
+//   - si no lo tocó         → la variable conserva lo que tuviera antes, y una
+//                             variable local que nunca fue destino de red nace
+//                             en orden de host (convenio ya usado por la regla
+//                             para la mayoría de sus avisos).
+//
+// Los dos caminos coinciden, así que el byteswap del llamante la deja en orden
+// de red SEA CUAL SEA la rama ejecutada, y no hay que suponer nada. Y esto no
+// es suerte: es la forma del bug. Con el idioma correcto —helper que rellena
+// crudo, llamante que convierte una vez— los dos caminos son `red` y `host`,
+// discrepan, y se sigue callando. La disyunción solo se cierra cuando el
+// helper ya dejó el dato en host, que es justo el caso con bug.
+//
+// Control (comprobado): la solución oficial del ej1 de Evaluacion2, que tiene
+// ese helper, sigue dando CERO avisos; inyectándole un segundo byteswap tras
+// la llamada, avisa en `if (ack == 1)`. Sobre los tres corpus (519 ficheros,
+// 494 avisos) el cambio no mueve ni un aviso: el patrón no aparece en ninguna
+// entrega, la fase se hizo por lo que pueda venir en convocatorias futuras.
 
 export interface Finding {
   startIndex: number;
@@ -375,6 +410,12 @@ function functionDefinitionsByName(root: Parser.SyntaxNode): Map<string, Parser.
 // no modelamos...) el resumen es `desconocido` y se sigue callando, igual que
 // hoy. Así el cambio es monótono respecto al comportamiento anterior salvo
 // donde hay certeza.
+//
+// El resumen compone SECUENCIAS (`memcpy(&v,...); v = byteswap(v);` es un solo
+// efecto encadenado, no dos veredictos que reconciliar) y sigue exigiendo
+// acuerdo entre ALTERNATIVAS (ramas excluyentes que dejan órdenes distintas →
+// `desconocido`). Cuando el efecto no se demuestra incondicional, el resumen
+// es `condicional` y lo resuelve el llamante uniendo los dos caminos.
 
 type Resumen =
   /** El callee no toca el parámetro: la llamada es irrelevante y se ignora. */
@@ -383,12 +424,15 @@ type Resumen =
   | { kind: "relativo"; swaps: number }
   /** El orden final no depende del entrante (`x = htons(strlen(s))`, o lectura de red). */
   | { kind: "absoluto"; orden: Orden }
+  /** SI el callee tocó el parámetro, lo dejó en `orden`; si no, lo dejó como
+   * estaba. Lo resuelve el llamante (ver el join en `analyze`). */
+  | { kind: "condicional"; orden: Orden }
   | { kind: "desconocido" };
 
 function mismoResumen(a: Resumen, b: Resumen): boolean {
   if (a.kind !== b.kind) return false;
   if (a.kind === "relativo" && b.kind === "relativo") return a.swaps === b.swaps;
-  if (a.kind === "absoluto" && b.kind === "absoluto") {
+  if ((a.kind === "absoluto" || a.kind === "condicional") && "orden" in b) {
     return a.orden.order === b.orden.order && a.orden.swaps === b.orden.swaps;
   }
   return true;
@@ -506,11 +550,9 @@ function efectoDeExpr(
     return { kind: "desconocido" };
   }
   if (e.type === "identifier" && e.text === param) {
-    // Es el propio parámetro. Solo es "el valor entrante" si no lo ha
-    // modificado nada antes dentro del callee; si sí, la cadena es más
-    // complicada de lo que modelamos → desconocido.
-    const previa = mostRecentMutation(calleeFn, param, index, ctx);
-    return previa ? { kind: "desconocido" } : { kind: "relativo", swaps: 0 };
+    // Es el propio parámetro: su efecto es el de la cadena de mutaciones que
+    // lo preceden DENTRO del callee. Si no hay ninguna, es el valor ENTRANTE.
+    return efectoEn(calleeFn, param, index, ctx, depth + 1);
   }
   const orden = analyzeExpr(calleeFn, e, index, ctx, depth + 1);
   if (orden.order === "unknown") return { kind: "desconocido" };
@@ -534,6 +576,43 @@ function efectoDeMutacion(
   // Se lo pasa a su vez a otra función por referencia: no lo perseguimos.
   if (m.kind === "refpass") return { kind: "desconocido" };
   return efectoDeExpr(calleeFn, m.node, m.pos, ctx, param, depth);
+}
+
+/** Efecto acumulado sobre `param` de todo lo que ocurre ANTES de `index`
+ * dentro del callee: se sigue la última mutación hacia atrás, encadenando,
+ * igual que hace `analyze` dentro de una función. Sin mutación previa, el
+ * valor es el ENTRANTE (`relativo` con 0 conversiones).
+ *
+ * Esto es lo que compone SECUENCIAS: `memcpy(&v, buf, 2); v = byteswap(v);`
+ * es "de red y luego convertido", no dos veredictos que haya que reconciliar. */
+function efectoEn(
+  calleeFn: Parser.SyntaxNode,
+  param: string,
+  index: number,
+  ctx: Ctx,
+  depth: number
+): Resumen {
+  if (depth > 40) return { kind: "desconocido" };
+  const previa = mostRecentMutation(calleeFn, param, index, ctx);
+  if (!previa) return { kind: "relativo", swaps: 0 };
+  return efectoDeMutacion(calleeFn, param, previa, ctx, depth + 1);
+}
+
+/** Las mutaciones que pueden ser la ÚLTIMA en algún camino de ejecución.
+ *
+ * Una mutación queda PISADA si más adelante hay otra que no está en una rama
+ * mutuamente excluyente con ella: entonces no puede decidir el valor final y
+ * no debe entrar en la comparación. Las que sobreviven son alternativas de
+ * verdad (ramas excluyentes), y ahí sí se exige que coincidan.
+ *
+ * Misma convención léxica que el análisis intra-función (ver
+ * `ramasMutuamenteExcluyentes`): una mutación dentro de un `if` cuenta como
+ * ejecutada para lo que venga después del `if`, que es justo el patrón
+ * `if (little) v = byteswap(v);`. */
+function mutacionesFinales(muts: Mutacion[]): Mutacion[] {
+  return muts.filter(
+    (m) => !muts.some((otra) => otra.pos > m.pos && !ramasMutuamenteExcluyentes(m.node, otra.node))
+  );
 }
 
 /** Resumen del efecto de `fname` sobre su parámetro por referencia no-const
@@ -570,33 +649,30 @@ function resumenParametro(ctx: Ctx, fname: string, argPos: number, depth: number
     if (!cubiertas) {
       r = { kind: "desconocido" };
     } else {
-      const efectos = muts.map((m) => efectoDeMutacion(calleeFn, param, m, ctxCallee, depth + 1));
+      // Solo las mutaciones que pueden quedar las últimas deciden el valor de
+      // salida, y cada una se calcula ENCADENANDO hacia atrás. Si sobrevive
+      // más de una son ramas alternativas y se sigue exigiendo que coincidan.
+      const finales = mutacionesFinales(muts);
+      const efectos = finales.map((m) => efectoDeMutacion(calleeFn, param, m, ctxCallee, depth + 1));
       r = efectos.every((e) => mismoResumen(e, efectos[0])) ? efectos[0] : { kind: "desconocido" };
     }
   }
 
-  // FASE ACTUAL: el caso "lo rellena de red Y ADEMÁS lo convierte" (el helper
-  // del enunciado, que entrega el dato "ya en formato nativo") se queda en
-  // `desconocido`, y conviene saber POR QUÉ, porque no es por esta línea.
+  // Un resumen que deja el parámetro en orden de HOST tras convertir es el
+  // helper del enunciado: rellena de red y entrega el dato "ya en formato
+  // nativo" (`memcpy(&seq,...); seq = byteswap(seq);`). Es justo el que
+  // habilita el DOBLE byteswap — si el llamante vuelve a convertir, el valor
+  // queda otra vez en orden de red.
   //
-  // Ese patrón son DOS mutaciones en secuencia (`memcpy(&seq,...)` y luego
-  // `seq = byteswap(seq)`), y el bucle de arriba exige que todas las
-  // mutaciones COINCIDAN. Eso es lo correcto para alternativas —ramas que se
-  // excluyen— pero no compone secuencias, así que discrepan y el resumen sale
-  // `desconocido`. Ahí es donde queda aplazado el DOBLE byteswap (helper
-  // convierte + llamante vuelve a convertir → otra vez orden de red).
-  //
-  // Habilitarlo NO es quitar esta guarda: exige calcular el resumen siguiendo
-  // la ÚLTIMA mutación hacia atrás —encadenando, como hace `analyze` dentro de
-  // una función— en vez de exigir acuerdo. Y antes hay que resolver la
-  // evidencia: el relleno suele ser condicional (`if (revents & POLLIN)`) y
-  // `funcs`/`refParams` se indexan solo por nombre, cosas que hoy solo
-  // producen silencio de más y entonces producirían acusaciones falsas.
-  //
-  // Esta guarda cubre el resto: un resumen de UNA sola mutación que deja el
-  // parámetro en orden de host tras convertir (`v = htons(strlen(s))`).
+  // Pero aquí NO se puede afirmar "al volver está en orden de host": el
+  // relleno casi siempre es CONDICIONAL (en la solución oficial vive dentro de
+  // un `else if (pfd[1].revents)`, y de las diez salidas de la función solo
+  // tres tocan el parámetro). Lo demostrable es más débil: "SI lo tocó, quedó
+  // en host". Por eso el resumen se marca `condicional` y quien decide es el
+  // llamante, que es el único que sabe qué había en la variable antes de la
+  // llamada. Ver el join en `analyze`.
   if (r.kind === "absoluto" && r.orden.order === "host" && r.orden.swaps >= 1) {
-    r = { kind: "desconocido" };
+    r = { kind: "condicional", orden: r.orden };
   }
 
   ctx.resumenes.set(clave, r);
@@ -807,6 +883,26 @@ function analyze(
     // que había antes de existir los resúmenes.
     const r = resumenParametro(ctx, m.callee, m.argPos, 0);
     if (r.kind === "absoluto") return r.orden;
+    if (r.kind === "condicional") {
+      // Dos caminos posibles: o el callee tocó el parámetro (y lo dejó en
+      // `r.orden`) o no lo tocó (y sigue lo que hubiera antes de la llamada).
+      // No sabemos cuál corrió, así que solo hay veredicto si los DOS coinciden
+      // en el orden — el join de siempre: si los dos cuernos dicen lo mismo, no
+      // hace falta saber qué rama se ejecutó.
+      //
+      // Y eso ocurre EXACTAMENTE en el patrón que interesa: cuando el helper
+      // deja el dato en orden de host, "no haberlo tocado" también es orden de
+      // host (una variable local que nunca fue destino de red nace en host,
+      // ver el `return HOST0` de arriba), así que las dos ramas coinciden y un
+      // byteswap posterior del llamante lo pone en orden de red por los dos
+      // caminos. En cambio, con el idioma correcto —el helper lo rellena crudo
+      // y el llamante convierte— los cuernos son `red` y `host`, discrepan, y
+      // se sigue callando. La disyunción solo se cierra en el caso con bug.
+      const previo = analyze(fn, name, m.pos, ctx, depth + 1);
+      if (previo.order !== r.orden.order) return UNKNOWN0;
+      // Conversiones garantizadas: las del camino que menos haga.
+      return { order: previo.order, swaps: Math.min(previo.swaps, r.orden.swaps) };
+    }
     if (r.kind === "relativo") {
       // El callee alternó el orden del valor ENTRANTE: hay que saber en qué
       // orden entró, y eso se resuelve donde siempre, en el llamante.
