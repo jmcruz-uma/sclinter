@@ -65,6 +65,23 @@ import { macrosDelFichero } from "./byteswapSobreValorSinTipo";
 // suelto, se busca su declaración en CUALQUIER punto del fichero (no solo
 // dentro de la función — puede ser una constante global) y se mira si el
 // inicializador menciona "endian".
+//
+// DOS CORRECCIONES MÁS, de un tercer examen (convocatoria UDP/DNS). Las dos
+// son falsos positivos sobre código correcto, y las dos son la misma idea de
+// siempre —reconocer un idioma equivalente— aplicada un paso más allá:
+//
+//  1. La bandera de endianness no se INICIALIZA con la comprobación, se
+//     ASIGNA después dentro del if (ver `esBanderaDeEndianness`):
+//       bool soylittle = false;
+//       if (std::endian::native == std::endian::little) soylittle = true;
+//     Mirar solo el inicializador (que aquí es `false`) no la veía.
+//
+//  2. El valor ya convertido no vive en una variable suelta sino en un CAMPO
+//     de una struct del estudiante (ver `claveDeOrigen`):
+//       cliente.puerto = htons(std::atoi(argv[1]));
+//       dir.sin_port = cliente.puerto;
+//     La excepción de "origen ya convertido" se rendía en cuanto el origen no
+//     era un identificador pelado.
 
 export interface Finding {
   startIndex: number;
@@ -167,15 +184,100 @@ function declaracionInicializadaConEndian(root: Parser.SyntaxNode, name: string)
   return found;
 }
 
+/** ¿Es `name` una BANDERA de endianness, es decir, un `bool` cuyo valor lo
+ * decide una comprobación de endianness hecha en un `if`? Caso real de examen:
+ *   bool soylittle = false;
+ *   if (std::endian::native == std::endian::little) soylittle = true;
+ *   ...
+ *   if (soylittle) dir.sin_port = std::byteswap(dir.sin_port);
+ * Es el mismo hueco que ya se tapó para `const bool ISLITTLE = (...)`, un paso
+ * más allá: aquí el inicializador es `false` y la comprobación vive en una
+ * ASIGNACIÓN posterior, así que mirar solo el inicializador no la ve.
+ *
+ * CERROJO deliberado, para no tomar cualquier `if (x)` por una guarda de
+ * endianness: hacen falta las DOS cosas, que `name` esté declarado `bool` y
+ * que se le asigne dentro de un if de endianness.
+ *
+ * La condición del if se comprueba por TEXTO, sin volver a pasar por
+ * `condicionMencionaEndian`: además de bastar para el idioma real (la
+ * comprobación se escribe entera donde se pone la bandera), evita la
+ * recursión infinita que habría con dos banderas que se asignan la una
+ * dentro del if de la otra. */
+function esBanderaDeEndianness(root: Parser.SyntaxNode, name: string): boolean {
+  let declaradaBool = false;
+  let asignadaBajoEndian = false;
+
+  function walk(n: Parser.SyntaxNode) {
+    if (!declaradaBool && n.type === "declaration") {
+      const tipo = n.childForFieldName("type");
+      if (tipo && /\bbool\b/.test(tipo.text) && nombreDeclaradoEnDeclaracion(n, name)) {
+        declaradaBool = true;
+      }
+    }
+    if (!asignadaBajoEndian && n.type === "assignment_expression") {
+      const left = n.childForFieldName("left");
+      if (left?.type === "identifier" && left.text === name && dentroDeIfDeEndian(n)) {
+        asignadaBajoEndian = true;
+      }
+    }
+    for (const child of n.namedChildren) walk(child);
+  }
+  walk(root);
+  return declaradaBool && asignadaBajoEndian;
+}
+
+/** ¿Declara `decl` el nombre `name`? Recorre TODOS los declaradores, que
+ * `bool a = false, b = true;` tiene varios (misma cautela que en
+ * `nombresDeclarados` de otras reglas). */
+function nombreDeclaradoEnDeclaracion(decl: Parser.SyntaxNode, name: string): boolean {
+  let encontrado = false;
+  function walk(n: Parser.SyntaxNode) {
+    if (encontrado) return;
+    if (n.type === "identifier" && n.text === name) {
+      // solo cuenta como declarador, no como parte del inicializador
+      const p = n.parent;
+      if (p === decl || p?.type === "init_declarator") encontrado = true;
+      return;
+    }
+    if (n.type === "init_declarator") {
+      const d = n.childForFieldName("declarator");
+      if (d?.type === "identifier" && d.text === name) encontrado = true;
+      return;
+    }
+    for (const child of n.namedChildren) walk(child);
+  }
+  for (const child of decl.namedChildren) walk(child);
+  return encontrado;
+}
+
+/** ¿Está `node` dentro de un `if` cuya condición menciona "endian" (texto)? */
+function dentroDeIfDeEndian(node: Parser.SyntaxNode): boolean {
+  let n: Parser.SyntaxNode | null = node;
+  while (n) {
+    const p: Parser.SyntaxNode | null = n.parent;
+    if (p?.type === "if_statement") {
+      const cond = p.childForFieldName("condition");
+      if (cond && /endian/i.test(cond.text) && n !== cond) return true;
+    }
+    n = p;
+  }
+  return false;
+}
+
 /** ¿La condición de un if menciona "endian", directamente o a través de
  * una constante con nombre propio declarada en cualquier parte del
  * fichero (p.ej. `if (ISLITTLE)` donde `ISLITTLE` se declaró con un
- * inicializador que compara std::endian::native)? */
+ * inicializador que compara std::endian::native), o de una BANDERA `bool`
+ * que se pone dentro de un if de endianness (ver `esBanderaDeEndianness`)? */
 function condicionMencionaEndian(condition: Parser.SyntaxNode): boolean {
   if (/endian/i.test(condition.text)) return true;
   const inner = condition.namedChildren[0] ?? condition;
   if (inner.type === "identifier") {
-    return declaracionInicializadaConEndian(translationUnit(condition), inner.text);
+    const raiz = translationUnit(condition);
+    return (
+      declaracionInicializadaConEndian(raiz, inner.text) ||
+      esBanderaDeEndianness(raiz, inner.text)
+    );
   }
   return false;
 }
@@ -255,19 +357,36 @@ function protegidoPorIfPosteriorDeEndianness(node: Parser.SyntaxNode, field: str
  *   if (std::endian::native == std::endian::little) puerto = std::byteswap(puerto);
  *   dir.sin_port = puerto;     // ya está en orden de red
  * o directamente `puerto = htons(puerto); dir.sin_port = puerto;`. Si el
- * valor asignado a sin_port es un identificador simple V y, ANTES en la
+ * valor asignado a sin_port es un origen simple V y, ANTES en la
  * misma función, V fue destino de una asignación/declaración cuyo valor
  * pasa por htons/byteswap, no se avisa. La conversión debe ser ANTERIOR:
  * si fuera posterior, sin_port se quedaría con el valor crudo (bug real,
- * debe seguir avisando). */
+ * debe seguir avisando).
+ *
+ * "Origen simple" incluye un CAMPO DE STRUCT (`cliente.puerto`, `p->puerto`),
+ * no solo un identificador pelado — caso real de examen: el alumno guarda el
+ * puerto ya convertido en un campo de su propia struct y lo asigna desde ahí.
+ * La comparación es por texto normalizado, así que `a.p` y `a->p` no se
+ * confunden (el operador forma parte del texto). */
+
+/** Texto normalizado de un origen que sabemos seguir: identificador o campo
+ * de struct. Cualquier otra forma (llamada, aritmética, índice...) devuelve
+ * null y la excepción no se aplica — ante la duda, se avisa. */
+function claveDeOrigen(node: Parser.SyntaxNode): string | null {
+  if (node.type === "identifier" || node.type === "field_expression") {
+    return node.text.replace(/\s+/g, "");
+  }
+  return null;
+}
+
 function valorYaConvertidoEnVariableOrigen(
   value: Parser.SyntaxNode,
   sinPortAssign: Parser.SyntaxNode
 ): boolean {
   let v: Parser.SyntaxNode = value;
   if (v.type === "parenthesized_expression") v = v.namedChildren[0] ?? v;
-  if (v.type !== "identifier") return false;
-  const name = v.text;
+  const name = claveDeOrigen(v);
+  if (!name) return false;
   const fn = enclosingFunction(sinPortAssign);
   if (!fn) return false;
 
@@ -279,8 +398,8 @@ function valorYaConvertidoEnVariableOrigen(
         const left = n.childForFieldName("left");
         const right = n.childForFieldName("right");
         if (
-          left?.type === "identifier" &&
-          left.text === name &&
+          left &&
+          claveDeOrigen(left) === name &&
           right &&
           containsCallTo(right, ["htons", "byteswap"])
         ) {
