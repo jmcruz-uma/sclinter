@@ -77,6 +77,48 @@ import { LECTURAS, ES_COMPLETA } from "./funcionesDeES";
 // corpus.
 //
 // ---------------------------------------------------------------------------
+// POR QUÉ NO SE LEVANTA `swaps >= 1` (debatido y MEDIDO el 2026-07-29)
+// ---------------------------------------------------------------------------
+//
+// La tentación es evidente: un valor que llega de la red y se usa en local SIN
+// convertir también está mal, y el informe de corrección de Evaluacion4 lo
+// penaliza en cinco alumnos ("no pasa a formato de host la métrica recibida").
+// Se probó a levantarlo, exigiendo además anchura multibyte demostrada para
+// dejar fuera los campos de un byte. Resultado del barrido: +56 avisos, y
+// CUATRO de ellos sobre la solución oficial del profesor (Evaluacion2,
+// ejemplo_soluciones_cpp/ejercicio3.cpp, líneas 129 y 147-153). El motivo es su
+// idioma portable:
+//
+//     std::uint16_t longitud;
+//     if (std::endian::native == std::endian::little) longitud = std::byteswap(longitud_be);
+//     else                                            longitud = longitud_be;   // 0 conversiones
+//     std::vector<char> almacen(longitud);                                      // y aquí se usa
+//
+// En una máquina big-endian el orden de red y el de host SON EL MISMO, así que
+// esa rama es correcta. Es decir: `swaps == 0` no significa "sin convertir",
+// significa "no consta que hiciera falta convertir".
+//
+// Y el fondo del asunto, que es lo que hay que recordar: con `swaps >= 1` es el
+// PROPIO PROGRAMA el que aporta la prueba — al escribir una conversión, el
+// estudiante declara que ese campo la necesita, y a partir de ahí la regla solo
+// tiene que contar la paridad, sin saber qué significa el campo. Con
+// `swaps == 0` no hay ninguna prueba, y afirmar que falta una conversión exige
+// saber qué es ese dato. El contraejemplo está en el propio corpus: el ej1 de
+// Evaluacion3 recibe una IP `uint32_t` de la red y hace `addr.s_addr = ip` SIN
+// convertir, porque convertirla sería el error — misma forma exacta que los
+// cinco alumnos de Evaluacion4 y veredicto opuesto. Lo único que las distingue
+// es el significado del campo, que no está en el código.
+//
+// Contraejemplo del profesor, en la misma línea: un proxy que recibe un dato y
+// lo retransmite tal cual por otro socket es correcto y no convierte nada. Hoy
+// no salta por cobertura (el valor retransmitido es el argumento *buffer*, no
+// el de tamaño), pero eso es suerte, no un argumento.
+//
+// CONCLUSIÓN: los cinco alumnos que el informe penaliza por esto NO son
+// detectables con análisis sintáctico sin el enunciado, igual que la lógica de
+// la FIFO o del temporizador del ejercicio 5. No es una carencia que arreglar.
+//
+// ---------------------------------------------------------------------------
 // DOBLE BYTESWAP: por qué se puede acusar sin saber qué rama corrió
 // ---------------------------------------------------------------------------
 //
@@ -984,10 +1026,12 @@ function flagIfNetwork(
   // que estén en una rama mutuamente excluyente con él.
   const chk: Ctx = { ...ctx, useNode: objetivo };
   const { order, swaps } = analyze(fn, objetivo.text, objetivo.startIndex, chk, 0);
-  // Solo se avisa si en el punto de uso el valor está en orden de RED y
-  // llegó ahí por al menos una conversión de orden de bytes. Un valor de
-  // red usado SIN convertir (swaps === 0), como un campo de 1 byte, no es
-  // asunto de esta regla y no se marca.
+  // Solo se avisa si en el punto de uso el valor está en orden de RED y llegó
+  // ahí por AL MENOS UNA conversión. Ese `swaps >= 1` es la pieza que sostiene
+  // toda la regla, y la razón no es la que estuvo escrita aquí mucho tiempo
+  // ("un campo de 1 byte, donde el orden da igual"), que es incompleta. Ver la
+  // sección "POR QUÉ NO SE LEVANTA `swaps >= 1`" en la cabecera antes de
+  // tocar esta línea: ya se intentó, con medición, y rompe la solución oficial.
   if (order === "network" && swaps >= 1) {
     findings.push({
       startIndex: objetivo.startIndex,
