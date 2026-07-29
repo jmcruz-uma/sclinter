@@ -35,6 +35,7 @@ import { findSizeContenedorNoByteSinAritmeticaIssues } from "../checkers/sizeCon
 import { findIoVectorDataIssues } from "../checkers/ioVectorData";
 import { findErrnoAsignacionEnVezDeComparacionIssues } from "../checkers/errnoAsignacionEnVezDeComparacion";
 import { findMemcpyInvertidoAlExtraerIssues } from "../checkers/memcpyInvertidoAlExtraer";
+import { findAnchuraDeConversionIssues } from "../checkers/anchuraDeConversion";
 
 export interface Rule {
   id: string;
@@ -245,6 +246,11 @@ export const RULES: Rule[] = [
     id: "errno-asignacion-en-vez-de-comparacion",
     titulo: "errno = X dentro de una condición o booleana (se quería errno == X); asignar a errno fuera de una guarda sí es legítimo",
     run: findErrnoAsignacionEnVezDeComparacionIssues,
+  },
+  {
+    id: "conversion-de-anchura-equivocada",
+    titulo: "htons/ntohs/htonl/ntohl cuya anchura no es la del dato (se pierden o se truncan bytes), y std::byteswap sobre un valor de 1 byte, que no hace nada",
+    run: findAnchuraDeConversionIssues,
   },
   {
     id: "memcpy-invertido-al-extraer",
