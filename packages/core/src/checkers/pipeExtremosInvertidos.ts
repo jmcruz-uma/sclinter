@@ -1,5 +1,6 @@
 import Parser from "web-tree-sitter";
 import { ampliarConAlias } from "./aliasTracking";
+import { VARIANTES_READ_N, VARIANTES_WRITE_N } from "./funcionesDeES";
 
 // Regla: en pipe(fd), fd[0] es el extremo de LECTURA y fd[1] el de
 // ESCRITURA (convención POSIX fija, no depende del ejercicio). Escribir
@@ -114,8 +115,9 @@ function aliasDeExtremos(
   return resultado;
 }
 
-const WRITE_FUNCS = ["write", "write_n", "send"];
-const READ_FUNCS = ["read", "read_n", "recv"];
+// Familia B′: con send/recv, pero sin recvfrom/sendto (una tubería no es UDP).
+const WRITE_FUNCS = ["write", ...VARIANTES_WRITE_N, "send"];
+const READ_FUNCS = ["read", ...VARIANTES_READ_N, "recv"];
 
 export function findPipeExtremosInvertidosIssues(
   tree: Parser.Tree,

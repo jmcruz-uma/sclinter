@@ -1,4 +1,5 @@
 import Parser from "web-tree-sitter";
+import { ES_COMPLETA } from "./funcionesDeES";
 
 // Regla: contenedor.size() a pelo (sin ninguna aritmética alrededor)
 // como tercer argumento de memcpy o de las ocho funciones de E/S, donde
@@ -20,7 +21,7 @@ export interface Finding {
   message: string;
 }
 
-const FUNCS = ["memcpy", "read", "read_n", "recv", "recvfrom", "write", "write_n", "send", "sendto"];
+const FUNCS = ["memcpy", ...ES_COMPLETA];
 const ONE_BYTE_TYPES = new Set([
   "std::byte", "byte",
   "char", "unsignedchar", "signedchar",

@@ -1,4 +1,5 @@
 import Parser from "web-tree-sitter";
+import { VARIANTES_READ_N, VARIANTES_WRITE_N } from "./funcionesDeES";
 
 // Regla: se usa fd[0] o fd[1] en read()/write()/read_n()/write_n() ANTES
 // de que, en la misma función, se haya llamado a pipe(fd). Mismo patrón
@@ -56,7 +57,8 @@ function subscriptArrayName(node: Parser.SyntaxNode): string | null {
   return arg?.type === "identifier" ? arg.text : null;
 }
 
-const IO_FUNCS = ["read", "read_n", "write", "write_n"];
+// Familia B: una tubería no se lee con recv ni se escribe con sendto.
+const IO_FUNCS = ["read", ...VARIANTES_READ_N, "write", ...VARIANTES_WRITE_N];
 
 export function findPipeUsoAntesDeCrearIssues(
   tree: Parser.Tree,

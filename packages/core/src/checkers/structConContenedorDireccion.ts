@@ -1,5 +1,6 @@
 import Parser from "web-tree-sitter";
 import { declaracionVigente, textoDelTipo } from "./scopeResolution";
+import { ES_COMPLETA } from "./funcionesDeES";
 
 // Regla: memcpy/write_n/read_n/send/sendto/recv/recvfrom/read/write sobre
 // &variable, donde `variable` es de un tipo struct/class DEFINIDO EN EL
@@ -18,7 +19,7 @@ export interface Finding {
   message: string;
 }
 
-const FUNCS = ["memcpy", "read", "read_n", "recv", "recvfrom", "write", "write_n", "send", "sendto"];
+const FUNCS = ["memcpy", ...ES_COMPLETA];
 
 /** Por qué un struct no se puede volcar entero: porque tiene un contenedor
  * (que guarda un puntero al heap) o porque tiene un PUNTERO CRUDO. El motivo

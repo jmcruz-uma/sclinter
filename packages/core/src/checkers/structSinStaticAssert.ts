@@ -1,4 +1,5 @@
 import Parser from "web-tree-sitter";
+import { ES_COMPLETA } from "./funcionesDeES";
 
 // Regla: memcpy/read/write/... sobre &variable, donde `variable` es un
 // struct/class PLANO (definido en el fichero, sin campos std::string ni
@@ -26,7 +27,7 @@ export interface Finding {
   message: string;
 }
 
-const FUNCS = ["memcpy", "read", "read_n", "recv", "recvfrom", "write", "write_n", "send", "sendto"];
+const FUNCS = ["memcpy", ...ES_COMPLETA];
 
 function enclosingFunction(node: Parser.SyntaxNode): Parser.SyntaxNode | null {
   let n: Parser.SyntaxNode | null = node;

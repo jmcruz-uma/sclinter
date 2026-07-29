@@ -1,4 +1,5 @@
 import Parser from "web-tree-sitter";
+import { ESCRITURAS } from "./funcionesDeES";
 
 // Regla: write/write_n/send/sendto usa array.size() como tamaño a
 // enviar, pero en la misma función existe una variable de offset
@@ -28,7 +29,7 @@ export interface Finding {
   message: string;
 }
 
-const SEND_FUNCS = ["write", "write_n", "send", "sendto"];
+const SEND_FUNCS = ESCRITURAS;
 
 function enclosingFunction(node: Parser.SyntaxNode): Parser.SyntaxNode | null {
   let n: Parser.SyntaxNode | null = node;

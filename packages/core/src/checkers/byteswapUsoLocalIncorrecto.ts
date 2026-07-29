@@ -1,4 +1,5 @@
 import Parser from "web-tree-sitter";
+import { LECTURAS, ES_COMPLETA } from "./funcionesDeES";
 
 // Regla: una variable que NUNCA fue destino de read/read_n/recv/recvfrom
 // (es decir, nació en orden de host, no llegó de la red) se usa como
@@ -143,7 +144,7 @@ const SWAP_FUNCS = ["htons", "ntohs", "htonl", "ntohl", "byteswap"];
  * `mempcpy-extension-gnu` la prohíbe por normativa. Reconocerla es lo que
  * evita acusar de un error de orden de bytes a quien lo tiene bien. */
 const EXTRACT_FUNCS = ["memcpy", "mempcpy"];
-const READ_FUNCS = ["read", "read_n", "readn", "recv", "recvfrom"];
+const READ_FUNCS = LECTURAS;
 const COMPARISON_OPS = ["==", "!=", "<", "<=", ">", ">="];
 
 /** Para las funciones cuya firma conocemos, qué papel juega cada posición de
@@ -159,16 +160,11 @@ const COMPARISON_OPS = ["==", "!=", "<", "<=", ">", ">="];
 const PAPELES_DE_ARGUMENTO: Record<string, { buffer: number[]; tamano: number }> = {
   memcpy: { buffer: [0, 1], tamano: 2 },
   mempcpy: { buffer: [0, 1], tamano: 2 },
-  read: { buffer: [1], tamano: 2 },
-  read_n: { buffer: [1], tamano: 2 },
-  readn: { buffer: [1], tamano: 2 },
-  write: { buffer: [1], tamano: 2 },
-  write_n: { buffer: [1], tamano: 2 },
-  writen: { buffer: [1], tamano: 2 },
-  recv: { buffer: [1], tamano: 2 },
-  send: { buffer: [1], tamano: 2 },
-  recvfrom: { buffer: [1], tamano: 2 },
-  sendto: { buffer: [1], tamano: 2 },
+  // Las funciones de E/S comparten firma en lo que aquí importa: el buffer va
+  // en la posición 1 y el tamaño en la 2. Se generan desde la única fuente de
+  // verdad de nombres para que las variantes de los helpers (`readn`, `readN`,
+  // `read_N`...) no haya que repetirlas aquí.
+  ...Object.fromEntries(ES_COMPLETA.map((f) => [f, { buffer: [1], tamano: 2 }])),
 };
 
 /** Quita los envoltorios que no cambian el valor: paréntesis y casts. Sin

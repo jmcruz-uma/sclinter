@@ -1,5 +1,6 @@
 import Parser from "web-tree-sitter";
 import { identificadorBase } from "./memcpyRepeatedDestination";
+import { ESCRITURAS } from "./funcionesDeES";
 
 // Regla: se envía (write/write_n/send/sendto) un buffer declarado en la
 // función en el que no se ha escrito nada. Viaja con lo que hubiera en esa
@@ -53,7 +54,7 @@ export interface Finding {
   message: string;
 }
 
-const SEND_FUNCS = ["write", "write_n", "send", "sendto"];
+const SEND_FUNCS = ESCRITURAS;
 
 function nombrePelado(node: Parser.SyntaxNode | null): string {
   return node ? node.text.replace(/\s+/g, "").replace(/^.*::/, "") : "";

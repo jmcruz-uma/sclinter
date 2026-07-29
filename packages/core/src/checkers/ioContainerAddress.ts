@@ -1,5 +1,6 @@
 import Parser from "web-tree-sitter";
 import { declaracionVigente, textoDelTipo } from "./scopeResolution";
+import { ES_COMPLETA } from "./funcionesDeES";
 
 // Regla: en read/read_n/recv/recvfrom/write/write_n/send/sendto, el
 // buffer de datos es SIEMPRE el segundo argumento (posición 1), aunque
@@ -24,7 +25,7 @@ export interface Finding {
   message: string;
 }
 
-const IO_FUNCS = ["read", "read_n", "recv", "recvfrom", "write", "write_n", "send", "sendto"];
+const IO_FUNCS = ES_COMPLETA;
 
 /** Si el nombre corresponde, EN ESE PUNTO, a un std::string o a un
  * std::vector, devuelve cuál de los dos; si no, null. Se resuelve la

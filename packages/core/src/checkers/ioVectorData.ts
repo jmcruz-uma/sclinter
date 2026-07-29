@@ -1,4 +1,5 @@
 import Parser from "web-tree-sitter";
+import { LECTURAS } from "./funcionesDeES";
 
 // Regla (nivel 1, mecánico — a diferencia de io-string-data, que es
 // normativa): escribir bytes de la red sobre el buffer de un std::vector
@@ -30,7 +31,7 @@ export interface Finding {
   message: string;
 }
 
-const READ_FUNCS = ["read", "read_n", "recv", "recvfrom"]; // vector = destino en 2º arg
+const READ_FUNCS = LECTURAS; // vector = destino en 2º arg
 // memcpy: vector = destino en 1er arg.
 
 // Tipos de elemento que corresponden a un buffer de bytes (texto del tipo

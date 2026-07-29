@@ -1,5 +1,6 @@
 import Parser from "web-tree-sitter";
 import { identificadorBase } from "./memcpyRepeatedDestination";
+import { LECTURAS, ESCRITURAS } from "./funcionesDeES";
 
 // Regla: `memcpy` con los argumentos INVERTIDOS al extraer un campo de un
 // buffer recibido de la red — `memcpy(almacen.data(), &tam, 2)` en vez de
@@ -82,8 +83,8 @@ export interface Finding {
 }
 
 const COPY_FUNCS = ["memcpy", "mempcpy"];
-const READ_FUNCS = ["read", "read_n", "readn", "recv", "recvfrom"];
-const SEND_FUNCS = ["write", "write_n", "send", "sendto"];
+const READ_FUNCS = LECTURAS;
+const SEND_FUNCS = ESCRITURAS;
 
 /** Nombre de función sin `std::` ni espacios. */
 function pelado(node: Parser.SyntaxNode | null): string {

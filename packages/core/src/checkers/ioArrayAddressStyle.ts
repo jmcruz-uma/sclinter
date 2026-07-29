@@ -1,5 +1,6 @@
 import Parser from "web-tree-sitter";
 import { declaracionVigente, textoDelTipo } from "./scopeResolution";
+import { ES_COMPLETA } from "./funcionesDeES";
 
 // Regla de ESTILO (no de bug), hermana de memcpy-array-direccion-estilo
 // pero para read/read_n/recv/recvfrom/write/write_n/send/sendto: pasar
@@ -22,7 +23,7 @@ export interface Finding {
   message: string;
 }
 
-const IO_FUNCS = ["read", "read_n", "recv", "recvfrom", "write", "write_n", "send", "sendto"];
+const IO_FUNCS = ES_COMPLETA;
 
 /** ¿El nombre usado en `useNode` corresponde, EN ESE PUNTO, a un std::array? */
 function esArrayEnEsePunto(useNode: Parser.SyntaxNode, name: string): boolean {

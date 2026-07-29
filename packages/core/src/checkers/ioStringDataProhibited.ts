@@ -1,4 +1,5 @@
 import Parser from "web-tree-sitter";
+import { LECTURAS } from "./funcionesDeES";
 
 // Regla de NORMATIVA (no heurística), hermana de memcpy-string-data-prohibido
 // pero para read/read_n/recv/recvfrom/write/write_n/send/sendto: el
@@ -16,7 +17,7 @@ export interface Finding {
   message: string;
 }
 
-const IO_FUNCS = ["read", "read_n", "recv", "recvfrom"];
+const IO_FUNCS = LECTURAS;
 // Solo se prohíbe donde el string es DESTINO (algo escribe dentro de su
 // buffer). En write/write_n/send/sendto el string es ORIGEN: solo se lee
 // para mandarlo, no requiere resize() previo ni arrastra el mismo riesgo

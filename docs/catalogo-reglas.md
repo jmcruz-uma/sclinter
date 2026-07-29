@@ -19,6 +19,11 @@ real sustituye `<X>` por el nombre real de la variable/función/tipo que
 aparezca en el fichero del estudiante — nunca salen literalmente en
 pantalla.
 
+Donde una regla menciona los helpers `read_n`/`write_n`, se reconocen
+también escritos `readn`, `readN` y `read_N` (y sus equivalentes de
+escritura): más de la mitad de las entregas de las convocatorias recientes
+usan la forma sin guion bajo.
+
 ## Las 37 reglas
 
 | # | id | Nivel | Qué detecta y mensaje |

@@ -1,4 +1,5 @@
 import Parser from "web-tree-sitter";
+import { VARIANTES_READ_N } from "./funcionesDeES";
 
 // Regla: read_n(0, ...) o read_n(STDIN_FILENO, ...). read_n está pensada
 // para exigir un número EXACTO de bytes (típico de un socket o pipe
@@ -38,7 +39,10 @@ export function findReadNEnTecladoIssues(
     if (n.type === "call_expression") {
       const func = n.childForFieldName("function");
       const bare = func?.text.replace(/^.*::/, "");
-      if (bare === "read_n") {
+      // Familia A: SOLO los helpers. La regla dice que read_n exige un número
+      // exacto de bytes y el teclado no lo tiene; con `read` a secas ese
+      // argumento no vale, así que aquí no entran read/recv.
+      if (bare && VARIANTES_READ_N.includes(bare)) {
         const args = n.childForFieldName("arguments");
         const fdArg = args?.namedChildren[0];
         if (fdArg && isStdinFd(fdArg)) {

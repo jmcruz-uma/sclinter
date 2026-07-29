@@ -1,5 +1,6 @@
 import Parser from "web-tree-sitter";
 import { ampliarConAlias, funcionesDefinidasEnFichero } from "./aliasTracking";
+import { VARIANTES_READ_N, VARIANTES_WRITE_N } from "./funcionesDeES";
 
 // Regla: usar el socket de ESCUCHA (el que se le pasa a accept()) para
 // leer/escribir con el cliente (read/read_n/write/write_n/send/recv), en
@@ -67,7 +68,8 @@ function findAcceptCalls(root: Parser.SyntaxNode): AcceptCall[] {
   return results;
 }
 
-const IO_FUNCS = ["read", "read_n", "write", "write_n", "send", "recv"];
+// Familia B′: un socket de escucha es TCP, así que recvfrom/sendto no pintan aquí.
+const IO_FUNCS = ["read", ...VARIANTES_READ_N, "write", ...VARIANTES_WRITE_N, "send", "recv"];
 
 export function findEntradaSalidaConSocketEscuchaIssues(
   tree: Parser.Tree,

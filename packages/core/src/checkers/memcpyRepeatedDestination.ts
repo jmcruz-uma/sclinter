@@ -1,5 +1,6 @@
 import Parser from "web-tree-sitter";
 import { declaracionVigente } from "./scopeResolution";
+import { ESCRITURAS } from "./funcionesDeES";
 
 // Regla: si dentro de la misma función hay dos (o más) llamadas a memcpy
 // que escriben en el mismo destino, sin que la expresión cambie con
@@ -310,7 +311,7 @@ function reassignedBetween(fn: Parser.SyntaxNode, name: string, fromIndex: numbe
   return found;
 }
 
-const SEND_FUNCS = ["write", "write_n", "send", "sendto"];
+const SEND_FUNCS = ESCRITURAS;
 
 /** ¿Se pasó `name` a alguna de las funciones de envío, con posición en
  * (fromIndex, toIndex)? Cubre el patrón "rellena, envía, vuelve a rellenar"
