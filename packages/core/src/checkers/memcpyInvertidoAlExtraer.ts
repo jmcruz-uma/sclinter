@@ -1,6 +1,7 @@
 import Parser from "web-tree-sitter";
 import { identificadorBase } from "./memcpyRepeatedDestination";
 import { LECTURAS, ESCRITURAS } from "./funcionesDeES";
+import { hasSizingBefore } from "./ioVectorData";
 
 // Regla: `memcpy` con los argumentos INVERTIDOS al extraer un campo de un
 // buffer recibido de la red — `memcpy(almacen.data(), &tam, 2)` en vez de
@@ -64,10 +65,23 @@ import { LECTURAS, ESCRITURAS } from "./funcionesDeES";
 // Evaluacion1 y Evaluacion3 (ahí el patrón no aparece).
 //
 // LÍMITES ACEPTADOS:
-//  - Solo `&identificador` como origen. `&pdu.campo` o `texto.data()` quedan
-//    fuera: el corpus no tiene ningún caso del primero, y el segundo (un
-//    `std::string` nunca rellenado, alumno_071:133) es otra forma del mismo
-//    despiste que se medirá aparte antes de decidir si entra.
+//  - Solo `&identificador` como origen para la forma del escalar; `&pdu.campo`
+//    queda fuera (el corpus no tiene ningún caso).
+//
+// SEGUNDA FORMA DE ORIGEN — CONTENEDOR SIN DIMENSIONAR (2026-07-29). El mismo
+// despiste escrito con un contenedor: `memcpy(almacen.data(), texto.data(), n)`
+// con `texto` un `std::string` que nunca se dimensionó. Aquí no hay
+// "escritura previa" que mirar —un contenedor vacío no tiene ninguna—, así que
+// la evidencia es la de `io-vector-data`: copiar DESDE el `.data()` de un
+// contenedor sin dimensionar es copiar de la nada, y a la vez se machaca el
+// buffer recibido. Las condiciones (1) y (2) siguen siendo las mismas, que son
+// las que sostienen la acusación de "argumentos invertidos": el destino se
+// leyó de la red y no se envía después, así que lo que se quería era extraer.
+// MEDIDO: 2 sitios (alumno_031 ej3 y alumno_071 ej3 de Evaluacion2, este
+// último marcado como invertido en el informe manual). `std::vector` entra
+// junto a `std::string` de forma preventiva, igual que `io-vector-data` entró
+// en su día con 0 casos: el patrón recomendado en la asignatura es el vector,
+// así que es donde aparecerá el mismo error en el futuro.
 //  - Se pierde alguna línea suelta dentro de un fichero que sí se detecta:
 //    alumno_043 ej1:148 copia `tipo_PDU`, que ni es parámetro ni se lee
 //    después. Sus dos hermanas (150 y 152) sí avisan, en el mismo bloque.
@@ -117,6 +131,25 @@ function parametrosPorReferencia(fnDef: Parser.SyntaxNode): Set<string> {
   return nombres;
 }
 
+/** Contenedores declarados en la función por defecto —`std::string texto;`,
+ * `std::vector<char> v;`— y que por tanto arrancan VACÍOS. Un declarador que
+ * no sea un identificador pelado (`v(n)`, `v = ...`, o el most vexing parse
+ * `std::string d(argv[3]);`, que la gramática da como `function_declarator`)
+ * significa que hay inicializador, así que no entra. */
+function contenedoresVacios(fn: Parser.SyntaxNode): Set<string> {
+  const nombres = new Set<string>();
+  (function recoge(n: Parser.SyntaxNode) {
+    if (n.type === "declaration") {
+      const tipo = n.childForFieldName("type")?.text.replace(/\s+/g, "") ?? "";
+      const decl = n.childForFieldName("declarator");
+      const esContenedor = /^(std::)?(string|vector<.+>)$/.test(tipo);
+      if (esContenedor && decl?.type === "identifier") nombres.add(decl.text);
+    }
+    for (const c of n.namedChildren) recoge(c);
+  })(fn);
+  return nombres;
+}
+
 interface Escritura {
   pos: number;
   nodo: Parser.SyntaxNode;
@@ -136,6 +169,7 @@ export function findMemcpyInvertidoAlExtraerIssues(
 
   for (const fn of funciones) {
     const refParams = parametrosPorReferencia(fn);
+    const vacios = contenedoresVacios(fn);
     const lecturasDeRed = new Map<string, number[]>();
     const envios = new Map<string, number[]>();
     const escrituras = new Map<string, Escritura[]>();
@@ -184,20 +218,26 @@ export function findMemcpyInvertidoAlExtraerIssues(
         const args = n.childForFieldName("arguments")?.namedChildren ?? [];
         if (COPY_FUNCS.includes(nombre) && args.length >= 2) {
           const origen = args[1];
-          // Origen estrictamente `&identificador`: un escalar, no un buffer.
-          const idOrigen =
-            origen.type === "pointer_expression" ? origen.childForFieldName("argument") : null;
-          if (idOrigen?.type === "identifier") {
-            const escalar = idOrigen.text;
-            const destino = identificadorBase(args[0]);
-            if (destino) {
-              const inicio = n.startIndex;
-              const fin = n.endIndex;
+          const destino = identificadorBase(args[0]);
+          const inicio = n.startIndex;
+          const fin = n.endIndex;
 
-              // (1) el destino se leyó de la red antes de este punto
-              const leidoAntes = (lecturasDeRed.get(destino) ?? []).some((p) => p < inicio);
-              // (2) y no se envía después
-              const enviadoDespues = (envios.get(destino) ?? []).some((p) => p > fin);
+          // (1) el destino se leyó de la red antes de este punto, y
+          // (2) no se envía después. Las dos son las que sostienen la
+          // acusación de "invertidos", y valen para las dos formas de origen.
+          const leidoAntes = destino
+            ? (lecturasDeRed.get(destino) ?? []).some((p) => p < inicio)
+            : false;
+          const enviadoDespues = destino
+            ? (envios.get(destino) ?? []).some((p) => p > fin)
+            : false;
+
+          if (destino && leidoAntes && !enviadoDespues) {
+            // --- Origen `&identificador`: un escalar -------------------------
+            const idOrigen =
+              origen.type === "pointer_expression" ? origen.childForFieldName("argument") : null;
+            if (idOrigen?.type === "identifier") {
+              const escalar = idOrigen.text;
 
               // (3a) parámetro por referencia todavía sin escribir
               const escritoAntes = (escrituras.get(escalar) ?? []).some((e) => e.pos < inicio);
@@ -218,7 +258,7 @@ export function findMemcpyInvertidoAlExtraerIssues(
                 );
               }
 
-              if (leidoAntes && !enviadoDespues && (esSalidaSinRellenar || seLeeDespues)) {
+              if (esSalidaSinRellenar || seLeeDespues) {
                 const porQue = esSalidaSinRellenar
                   ? `${escalar} es un parámetro por referencia que esta función tenía que rellenar, ` +
                     `y al volver se queda sin su campo`
@@ -232,6 +272,31 @@ export function findMemcpyInvertidoAlExtraerIssues(
                     `Así se escribe ${escalar} ENCIMA de los datos recibidos, que se pierden; ` +
                     `además, ${porQue}. Para extraer el campo hay que copiar en el otro sentido: ` +
                     `${escalar} de destino y ${destino} de origen.`,
+                });
+              }
+            }
+
+            // --- Origen `contenedor.data()` sin dimensionar ------------------
+            // (3c) Copiar desde el .data() de un contenedor vacío es copiar de
+            // la nada, y además machaca lo recibido. No hay "escritura previa"
+            // que mirar: la evidencia es que nunca se dimensionó.
+            const func = origen.type === "call_expression" ? origen.childForFieldName("function") : null;
+            const objeto =
+              func?.type === "field_expression" && func.childForFieldName("field")?.text === "data"
+                ? func.childForFieldName("argument")
+                : null;
+            if (objeto?.type === "identifier" && vacios.has(objeto.text)) {
+              if (!hasSizingBefore(fn, objeto.text, inicio)) {
+                findings.push({
+                  startIndex: inicio,
+                  endIndex: fin,
+                  message:
+                    `Los argumentos de este memcpy parecen invertidos: el destino es ${destino}, ` +
+                    `el buffer que se acaba de leer de la red, y el origen es ${objeto.text}, que ` +
+                    `no se ha dimensionado en ningún momento, así que no hay nada que copiar de ` +
+                    `él. Se machacan los datos recibidos con memoria vacía. Para extraer el ` +
+                    `contenido hay que copiar en el otro sentido, y dimensionar ${objeto.text} ` +
+                    `antes (${objeto.text}.resize(n)).`,
                 });
               }
             }

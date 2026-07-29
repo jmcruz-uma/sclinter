@@ -1,4 +1,6 @@
 #include <array>
+#include <string>
+#include <vector>
 #include <cstdint>
 #include <cstring>
 #include <unistd.h>
@@ -104,4 +106,45 @@ void calla_sin_evidencia(int fd) {
 
     uint16_t tam = 0;
     memcpy(almacen.data(), &tam, 2);
+}
+
+// ---------------------------------------------------------------------------
+// AVISA: el origen es un contenedor que nunca se dimensionó
+// ---------------------------------------------------------------------------
+
+// Mismo despiste, escrito con un contenedor en vez de con un escalar. Aquí no
+// hay "escritura previa" que mirar —un contenedor vacío no tiene ninguna—, así
+// que la evidencia es que nunca se dimensionó: copiar desde su .data() es
+// copiar de la nada, y encima machaca lo recibido.
+void bug_origen_string_sin_dimensionar(int fd, size_t tam) {
+    std::array<uint8_t, 64> almacen;
+    read_n(fd, almacen.data(), almacen.size());
+
+    std::string texto;
+    memcpy(almacen.data() + 2, texto.data(), tam);
+}
+
+// Preventivo: el patrón recomendado en la asignatura es el vector, así que es
+// donde aparecerá este mismo error en el futuro.
+void bug_origen_vector_sin_dimensionar(int fd, size_t tam) {
+    std::array<uint8_t, 64> almacen;
+    read_n(fd, almacen.data(), almacen.size());
+
+    std::vector<char> texto;
+    memcpy(almacen.data() + 2, texto.data(), tam);
+}
+
+// ---------------------------------------------------------------------------
+// CALLA: el contenedor sí está dimensionado
+// ---------------------------------------------------------------------------
+
+// Con el contenedor dimensionado, copiar de él hacia el buffer es una
+// construcción de mensaje perfectamente normal.
+void bien_origen_dimensionado(int fd, size_t tam) {
+    std::array<uint8_t, 64> almacen;
+    read_n(fd, almacen.data(), almacen.size());
+
+    std::string texto;
+    texto.resize(tam);
+    memcpy(almacen.data() + 2, texto.data(), tam);
 }

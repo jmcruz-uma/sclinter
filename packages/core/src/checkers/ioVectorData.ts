@@ -84,8 +84,10 @@ function emptyByteVectorNames(functionNode: Parser.SyntaxNode): Set<string> {
 }
 
 /** ¿Hay antes de `beforeIndex` una operación que dimensiona `name`
- * (resize/assign o una asignación `name = ...`)? reserve NO cuenta. */
-function hasSizingBefore(functionNode: Parser.SyntaxNode, name: string, beforeIndex: number): boolean {
+ * (resize/assign o una asignación `name = ...`)? reserve NO cuenta.
+ * Se exporta porque `memcpyInvertidoAlExtraer` necesita la misma pregunta
+ * sobre el contenedor que hace de ORIGEN de una copia. */
+export function hasSizingBefore(functionNode: Parser.SyntaxNode, name: string, beforeIndex: number): boolean {
   let found = false;
   function walk(n: Parser.SyntaxNode) {
     if (found) return;
