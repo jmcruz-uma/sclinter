@@ -260,18 +260,20 @@ export function findMemcpyInvertidoAlExtraerIssues(
 
               if (esSalidaSinRellenar || seLeeDespues) {
                 const porQue = esSalidaSinRellenar
-                  ? `${escalar} es un parámetro por referencia que esta función tenía que rellenar, ` +
-                    `y al volver se queda sin su campo`
-                  : `${escalar} se usa justo después como si este memcpy la hubiera rellenado`;
+                  ? `${escalar} es un parámetro por referencia que esta función tenía que ` +
+                  `rellenar, así que quien la llamó se quedará sin ese valor`
+                  : `${escalar} se usa justo después, como si este memcpy() la hubiera ` +
+                  `rellenado`;
                 findings.push({
                   startIndex: inicio,
                   endIndex: fin,
                   message:
-                    `Los argumentos de este memcpy parecen invertidos: el destino es ${destino}, ` +
-                    `el buffer que se acaba de leer de la red, y el origen es ${escalar}. ` +
-                    `Así se escribe ${escalar} ENCIMA de los datos recibidos, que se pierden; ` +
-                    `además, ${porQue}. Para extraer el campo hay que copiar en el otro sentido: ` +
-                    `${escalar} de destino y ${destino} de origen.`,
+                    `Los argumentos de este memcpy() parecen invertidos: el destino es ` +
+                    `${destino}, el buffer que se acaba de leer de la red, y el origen es ` +
+                    `${escalar}. Así se escribe ${escalar} ENCIMA de los datos recibidos, ` +
+                    `que se pierden; además, ${porQue}. Para extraer el campo hay que ` +
+                    `copiar en el otro sentido: ${escalar} de destino y ${destino} de ` +
+                    `origen.`,
                 });
               }
             }
@@ -291,12 +293,13 @@ export function findMemcpyInvertidoAlExtraerIssues(
                   startIndex: inicio,
                   endIndex: fin,
                   message:
-                    `Los argumentos de este memcpy parecen invertidos: el destino es ${destino}, ` +
-                    `el buffer que se acaba de leer de la red, y el origen es ${objeto.text}, que ` +
-                    `no se ha dimensionado en ningún momento, así que no hay nada que copiar de ` +
-                    `él. Se machacan los datos recibidos con memoria vacía. Para extraer el ` +
-                    `contenido hay que copiar en el otro sentido, y dimensionar ${objeto.text} ` +
-                    `antes (${objeto.text}.resize(n)).`,
+                    `Los argumentos de este memcpy() parecen invertidos: el destino es ` +
+                    `${destino}, el buffer que se acaba de leer de la red, y el origen es ` +
+                    `${objeto.text}, que no se ha dimensionado en ningún momento, así que ` +
+                    `no hay nada que copiar de él. Se machacan los datos recibidos con ` +
+                    `memoria vacía. Para extraer el contenido hay que copiar en el otro ` +
+                    `sentido, y dimensionar ${objeto.text} antes ` +
+                    `(${objeto.text}.resize(n)).`,
                 });
               }
             }

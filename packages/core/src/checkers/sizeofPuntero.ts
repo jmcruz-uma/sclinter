@@ -103,8 +103,9 @@ export function findSizeofPunteroIssues(
             startIndex: n.startIndex,
             endIndex: n.endIndex,
             message:
-              `sizeof(${value.text}) mide el puntero (normalmente 8 bytes), no lo que apunta — ` +
-              `${value.text} está declarado como puntero. ¿Querías el tamaño real de lo que hay detrás?`,
+              `sizeof(${value.text}) mide el puntero (normalmente 8 bytes), no lo que ` +
+              `apunta, y ${value.text} está declarado como puntero. ¿Querías el tamaño ` +
+              `real de lo que hay detrás?`,
           });
         } else if (clase === "array-de-punteros") {
           findings.push({

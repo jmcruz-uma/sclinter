@@ -79,9 +79,10 @@ export function findErrnoAsignacionEnVezDeComparacionIssues(
           startIndex: n.startIndex,
           endIndex: n.endIndex,
           message:
-            `Aquí se ASIGNA a errno (errno = ${right}) dentro de una condición, en vez de compararlo. ` +
-            `La condición no comprueba nada: toma el valor asignado (que al ser una constante de error ` +
-            `no es cero, así que sale siempre cierta) y además pisa el errno real. ¿Querías errno == ${right}?`,
+            `Aquí se ASIGNA a errno (errno = ${right}) dentro de una condición, en vez de ` +
+            `compararlo. La condición no comprueba nada: toma el valor asignado (que al ` +
+            `ser una constante de error no es cero, así que sale siempre cierta) y además ` +
+            `se machaca el valor real de errno.`,
         });
       }
     }

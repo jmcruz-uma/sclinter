@@ -242,8 +242,8 @@ export function findZombiesSinReapIssues(
         startIndex: forkCall.startIndex,
         endIndex: forkCall.endIndex,
         message:
-          "No se ve ni wait()/waitpid() ni signal(SIGCHLD, SIG_IGN) en esta función. Sin uno de " +
-          "los dos, los procesos hijo terminados se quedan como zombis.",
+          "No se ha encontrado ninguna llamada a wait(), waitpid() o signal(SIGCHLD, " +
+          "SIG_IGN). Es posible que los procesos hijos queden zombies.",
       });
     }
   }

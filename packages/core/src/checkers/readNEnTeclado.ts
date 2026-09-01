@@ -50,8 +50,9 @@ export function findReadNEnTecladoIssues(
             startIndex: n.startIndex,
             endIndex: n.endIndex,
             message:
-              "read_n() exige un número exacto de bytes, y está pensado para sockets/tuberías " +
-              "(no para el teclado, que lee una secuencia de caracteres de longitud variable).",
+              "Esta función exige la lectura de un número exacto de bytes, y está pensada " +
+              "para sockets/tuberías (no para el teclado, que lee una secuencia de " +
+              "caracteres de longitud variable).",
           });
         }
       }

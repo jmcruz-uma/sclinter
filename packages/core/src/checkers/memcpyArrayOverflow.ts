@@ -119,8 +119,8 @@ export function findMemcpyArrayOverflowIssues(
           startIndex: argNode.startIndex,
           endIndex: argNode.endIndex,
           message:
-            `${ident} es un std::array de ${size} elementos, pero este memcpy usa ${n} bytes como ` +
-            `${role}. Desbordamiento del array.`,
+            `${ident} es un std::array de ${size} elementos, pero este memcpy usa ${n} ` +
+            `bytes como ${role}. Se produce un desbordamiento del array.`,
         });
       }
     }

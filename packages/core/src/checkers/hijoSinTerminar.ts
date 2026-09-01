@@ -209,9 +209,10 @@ export function findHijoSinTerminarIssues(
                 startIndex: m.startIndex,
                 endIndex: m.childForFieldName("condition")!.endIndex,
                 message: dangerousLoop
-                  ? `El hijo (rama donde ${name} es 0) no termina explícitamente y este bloque está ` +
-                    `dentro de un bucle que también hace fork() — el hijo puede volver a forkar. Añade ` +
-                    `exit()/return al final de la rama del hijo.`
+                  ? `El hijo (rama donde ${name} es 0) no termina explícitamente y este ` +
+                  `bloque está dentro de un bucle que hace fork(), por lo que el hijo ` +
+                  `puede volver también a hacer fork. Añade exit()/return al final de la ` +
+                  `rama del hijo.`
                   : `El hijo (rama donde ${name} es 0) no termina explícitamente con exit()/return al ` +
                     `final. Revisa si eso es intencionado.`,
               });

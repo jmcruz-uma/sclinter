@@ -53,9 +53,10 @@ export function findIoArrayAddressStyleIssues(
                 startIndex: buf.startIndex,
                 endIndex: buf.endIndex,
                 message:
-                  `[estilo, no error] &${target.text} funciona correctamente aquí — para std::array, ` +
-                  `&variable y variable.data() son la misma dirección. Aun así, en esta asignatura se usa ` +
-                  `siempre ${target.text}.data(), por consistencia con std::string y std::vector.`,
+                  `Aunque &${target.text} funciona correctamente aquí (ya que para ` +
+                  `std::array, &variable y variable.data() representan la misma dirección ` +
+                  `de memoria), deberías utilizar siempre ${target.text}.data(), por ` +
+                  `consistencia con otros contenedores donde eso no sucede.`,
               });
             }
           }

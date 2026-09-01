@@ -104,13 +104,14 @@ export function findStructConContenedorDireccionIssues(
               endIndex: arg.endIndex,
               message:
                 motivo === "contenedor"
-                  ? `&${target.text} es un ${type}, que tiene algún campo std::string/std::vector — ` +
-                    `${bare}() volcará los punteros internos de ese campo, no su contenido de texto. ` +
-                    `Hay que serializar/deserializar campo a campo, no el struct entero de una vez.`
-                  : `&${target.text} es un ${type}, que tiene algún campo puntero — ${bare}() enviará ` +
-                    `la dirección que guarda ese puntero, no lo que hay detrás, y esa dirección no ` +
-                    `significa nada en el otro extremo. Hay que serializar/deserializar campo a campo, ` +
-                    `no el struct entero de una vez.`,
+                  ? `&${target.text} es un ${type} que tiene algún campo ` +
+                  `std::string/std::vector, por lo que ${bare}() volcará los punteros ` +
+                  `internos de ese campo, no su contenido de texto. Hay que ` +
+                  `serializar/deserializar campo a campo, no el struct entero de una vez.`
+                  : `&${target.text} es un ${type} que tiene algún campo puntero, por lo que ` +
+                  `${bare}() enviará la dirección que guarda ese puntero, no lo que hay ` +
+                  `detrás, y esa dirección no significa nada en el otro extremo. Hay que ` +
+                  `serializar/deserializar campo a campo, no el struct entero de una vez.`,
             });
           }
         }

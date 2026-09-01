@@ -65,14 +65,16 @@ export function findIoContainerAddressIssues(
               const consejo =
                 type === "std::vector"
                   ? `Usa ${target.text}.data() sobre contenido ya reservado (tras resize()).`
-                  : `En esta asignatura, además, usar memcpy o E/S directa sobre .data() de un std::string ` +
-                    `también está restringido — usa los métodos propios del contenedor.`;
+                  : "Utilizar memcpy() o E/S directa sobre .data() de un std::string es muy " +
+                  "propenso a errores. Utiliza los métodos propios de std::string para " +
+                  "rellenarlo de contenido.";
               findings.push({
                 startIndex: buf.startIndex,
                 endIndex: buf.endIndex,
                 message:
-                  `${bare}(..., &${target.text}, ...) sobreescribe/lee la representación interna del ` +
-                  `${type}, no su contenido — su contenido vive en otra dirección. ${consejo}`,
+                  `${bare}(..., &${target.text}, ...) sobreescribe/lee la representación ` +
+                  `interna del ${type}, no su contenido real, que está en otra dirección ` +
+                  `de memoria. ${consejo}`,
               });
             }
           }

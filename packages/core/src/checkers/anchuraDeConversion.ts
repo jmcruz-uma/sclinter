@@ -114,7 +114,7 @@ const ANCHURA_DE_LA_CONVERSION: Record<string, number> = {
   ntohl: 4,
 };
 
-const CONSEJO = "Para los campos del protocolo usa enteros de longitud fija (uint16_t, uint32_t).";
+const CONSEJO = "Para los campos de un mensaje usa enteros de longitud fija (uint16_t, uint32_t...).";
 
 function pelado(node: Parser.SyntaxNode | null): string {
   return node ? node.text.replace(/\s+/g, "").replace(/^.*::/, "") : "";
@@ -175,9 +175,10 @@ export function findAnchuraDeConversionIssues(
           // (D1) La plantilla deduce el tipo: intercambia los 4 bytes de un int.
           avisar(
             n,
-            `std::byteswap deduce el tipo de su argumento, y ${arg.text} es ${tipoArg}: ` +
-              `intercambia los 4 bytes del entero, no los del campo. Al guardarlo en un campo ` +
-              `de 2 bytes el valor se pierde entero (queda 0). ${CONSEJO}`
+            `std::byteswap deduce el tipo de su argumento y, como ${arg.text} es ` +
+            `${tipoArg}, se van a intercambiar los bytes que tiene ese tipo. Si luego ` +
+            `intentas guardar menos bytes, se truncan los que hay y te quedas con bytes ` +
+            `erróneos. ${CONSEJO}`
           );
         }
         for (const h of n.namedChildren) recorre(h);

@@ -346,15 +346,15 @@ function sentBetween(fn: Parser.SyntaxNode, name: string, fromIndex: number, toI
 
 function mensajeBuffer(dstText: string): string {
   return (
-    `Este memcpy escribe en el mismo destino que otro memcpy anterior en la misma función ` +
-    `("${dstText}"), sin desplazamiento de por medio. ¿Has olvidado avanzar el puntero ` +
-    `para no pisar lo que ya habías escrito?`
+    `Este memcpy() escribe en el mismo destino que otro memcpy() anterior en la misma ` +
+    `función ("${dstText}"), sin desplazamiento de por medio. ¿Has olvidado avanzar el ` +
+    `puntero para no pisar lo que ya habías escrito?`
   );
 }
 
 function mensajeEscalar(dstText: string): string {
   return (
-    `Este memcpy y otro anterior extraen del mismo buffer sobre la misma variable ` +
+    `Este memcpy() y otro anterior extraen del mismo buffer sobre la misma variable ` +
     `("${dstText}"), con desplazamientos distintos: el segundo pisa el valor del primero. ` +
     `¿Querías dos variables distintas?`
   );

@@ -176,9 +176,9 @@ export function findEnvioDeBufferSinRellenarIssues(
           startIndex: buffer.startIndex,
           endIndex: buffer.endIndex,
           message:
-            `${fn}() envía ${nombre}, pero en toda la función no se escribe nada en ${nombre}: ` +
-            `viaja con lo que hubiera en esa memoria. Revisa si te has olvidado de rellenarlo, ` +
-            `o si rellenaste otra variable por error.`,
+            `${fn}() envía ${nombre}, pero en toda la función no se escribe nada en ` +
+            `${nombre}, así que se manda lo que hubiera en esa memoria. Revisa si te has ` +
+            `olvidado de rellenarlo, o si rellenaste otra variable por error.`,
         });
       }
     }

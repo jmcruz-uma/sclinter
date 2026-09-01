@@ -75,8 +75,8 @@ function desenvuelveParentesis(node: Parser.SyntaxNode): Parser.SyntaxNode {
 }
 
 const CONSEJO =
-  "Dale un tipo explícito al valor: una constante con tipo " +
-  "(`const uint16_t PUERTO = 54321;`) en vez de una macro, o haz el casting en el propio argumento.";
+  "No utilices una macro sin tipo. Declara este valor con un tipo explícito (por ejemplo " +
+  "`const uint16_t PUERTO = 54321;`), o haz un casting en el propio argumento.";
 
 export function findByteswapSobreValorSinTipoIssues(
   tree: Parser.Tree,
@@ -100,9 +100,10 @@ export function findByteswapSobreValorSinTipoIssues(
             startIndex: arg.startIndex,
             endIndex: arg.endIndex,
             message:
-              `std::byteswap deduce el tipo de su argumento, y un literal entero como ${arg.text} es ` +
-              `un int: aquí se intercambian 4 bytes, no 2. Al guardar el resultado en un uint16_t se ` +
-              `trunca en silencio (el compilador no avisa). ${CONSEJO}`,
+              `std::byteswap deduce el tipo de su argumento, y un literal entero como ` +
+              `${arg.text} es un int: aquí se intercambian 4 bytes, no 2. Al guardar el ` +
+              `resultado en un uint16_t se trunca el resultado (y quizá el compilador no ` +
+              `te avise). ${CONSEJO}`,
           });
         } else if (arg.type === "identifier" && macros.has(arg.text)) {
           const cuerpo = (macros.get(arg.text) ?? "").trim();
@@ -111,10 +112,10 @@ export function findByteswapSobreValorSinTipoIssues(
               startIndex: arg.startIndex,
               endIndex: arg.endIndex,
               message:
-                `std::byteswap deduce el tipo de su argumento, y ${arg.text} es una macro sin tipo ` +
-                `(#define ${arg.text} ${cuerpo}): el preprocesador la sustituye por un literal, que es un int, ` +
-                `así que se intercambian 4 bytes en vez de 2 y el resultado se trunca en silencio ` +
-                `(el compilador no avisa). ${CONSEJO}`,
+                `std::byteswap deduce el tipo de su argumento, y ${arg.text} es una macro ` +
+                `sin tipo (#define ${arg.text} ${cuerpo}): el preprocesador la sustituye ` +
+                `por un literal, que es un int, así que se intercambian 4 bytes en vez de ` +
+                `2 y el resultado se trunca (quizá el compilador no te avise). ${CONSEJO}`,
             });
           }
         }

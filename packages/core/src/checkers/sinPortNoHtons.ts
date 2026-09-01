@@ -512,7 +512,7 @@ function valorUsaMacroConvertidora(
   return encontrada;
 }
 
-const MENSAJE = "El valor asignado a sin_port no parece correcto. Revísalo antes de entregar.";
+const MENSAJE = "El valor asignado a sin_port no parece correcto.";
 
 /** Nivel 4 (normativa): el código funciona, pero la conversión queda
  * escondida detrás de un nombre de macro. Mensaje explícito, a diferencia
@@ -521,11 +521,10 @@ const MENSAJE = "El valor asignado a sin_port no parece correcto. Revísalo ante
  * de la macro. */
 function mensajeMacro(macro: string): string {
   return (
-    `El valor de sin_port viene de la macro ${macro}, que esconde la conversión de orden de bytes ` +
-    `dentro de su definición. Es una práctica desaconsejada: el puerto se declara como una ` +
-    `constante con tipo y la conversión queda a la vista en el punto de uso: ` +
-    `\`const uint16_t PUERTO = 54321;\` y luego \`dir.sin_port = htons(PUERTO);\`. ` +
-    `Una macro no tiene tipo (la sustituye el preprocesador) y oculta lo que de verdad le pasa al valor.`
+    `El valor de sin_port viene de la macro ${macro}, que esconde la conversión de orden ` +
+    `de bytes dentro de su definición. Evita el uso de macros, especialmente cuando ` +
+    `realizan acciones, porque el preprocesador las sustituye y es fácil que se enmascaren ` +
+    `errores.`
   );
 }
 

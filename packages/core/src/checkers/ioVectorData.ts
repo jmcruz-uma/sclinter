@@ -152,10 +152,10 @@ export function findIoVectorDataIssues(tree: Parser.Tree, _language: Parser.Lang
                 startIndex: dest.startIndex,
                 endIndex: dest.endIndex,
                 message:
-                  `${name}.data() se usa como destino de ${bare}() pero ${name} es un std::vector vacío ` +
-                  `(tamaño 0): su .data() no apunta a memoria válida para escribir, es comportamiento ` +
-                  `indefinido. Dimensiónalo antes con ${name}.resize(n) o constrúyelo con tamaño ` +
-                  `(std::vector<...> ${name}(n)). Ojo: reserve() no vale, cambia la capacidad, no el tamaño.`,
+                  `${name}.data() se usa como destino de ${bare}() pero ${name} es un ` +
+                  `std::vector vacío (con tamaño 0): su .data() no apunta a memoria válida ` +
+                  `para escribir. Dimensiónalo antes con ${name}.resize(n) o constrúyelo ` +
+                  `con tamaño (std::vector<...> ${name}(n)).`,
               });
             }
           }

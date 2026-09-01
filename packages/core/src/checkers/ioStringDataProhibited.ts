@@ -110,9 +110,9 @@ export function findIoStringDataProhibitedIssues(
                 startIndex: buf.startIndex,
                 endIndex: buf.endIndex,
                 message:
-                  `${bare}(..., ${name}.data(), ...) está prohibido en esta asignatura, ` +
-                  `independientemente de si el tamaño cuadra. Usa los métodos propios del contenedor ` +
-                  `en vez de escribir/leer sobre su buffer a bajo nivel.`,
+                  `${bare}(..., ${name}.data(), ...) es muy propenso a errores, ` +
+                  `independientemente de si el tamaño cuadra. Utiliza los métodos propios ` +
+                  `del contenedor en vez de escribir/leer sobre su buffer interno.`,
               });
             }
           }

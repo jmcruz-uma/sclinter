@@ -68,10 +68,9 @@ export function findMemcpyArrayAddressStyleIssues(
         startIndex: argNode.startIndex,
         endIndex: argNode.endIndex,
         message:
-          `[estilo, no error] &${target.text} funciona correctamente aquí como ${rol} — para ` +
-          `std::array, &variable y variable.data() son la misma dirección. Aun así, en esta ` +
-          `asignatura se usa siempre ${target.text}.data() sobre contenedores, por consistencia ` +
-          `con std::string y std::vector (donde & sí sería un error).`,
+          `Aunque &${target.text} funciona correctamente aquí como ${rol} porque es de ` +
+          `tipo std::array, utiliza siempre ${target.text}.data() sobre contenedores por ` +
+          `consistencia con std::string y std::vector (donde el & sí sería un error).`,
       });
     }
   }
