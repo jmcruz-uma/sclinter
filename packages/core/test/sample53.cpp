@@ -66,7 +66,7 @@ size_t bien_extraccion_correcta(int fd) {
 // ---------------------------------------------------------------------------
 
 // El destino nunca se leyó de la red: es un buffer de salida. Sin esta
-// condición, todos los memcpy de construcción de mensajes del corpus (cientos)
+// condición, todos los memcpy de construcción de mensajes del conjunto de pruebas (cientos)
 // serían avisos.
 void bien_construccion_de_mensaje(int fd, uint16_t cuantos) {
     std::array<uint8_t, 6> envio;
@@ -79,7 +79,7 @@ void bien_construccion_de_mensaje(int fd, uint16_t cuantos) {
 // ---------------------------------------------------------------------------
 
 // Aquí el destino SÍ se leyó de la red antes, pero se envía después: escribir
-// encima era lo que se quería. Caso real del corpus (alumno_026 de Evaluacion1).
+// encima era lo que se quería. Caso real del conjunto de pruebas (un caso observado).
 void bien_respuesta_sobre_el_buffer_recibido(int fd) {
     std::array<uint8_t, 6> almacen;
     read_n(fd, almacen.data(), almacen.size());
@@ -99,7 +99,7 @@ void bien_respuesta_sobre_el_buffer_recibido(int fd) {
 // El memcpy machaca los datos recibidos igual, pero sin lectura posterior de
 // la variable ni contrato de parámetro que incumplir no hay evidencia
 // mecánica de la inversión, y esta regla prefiere callar. Caso real:
-// alumno_043 ej1:148, cuyas dos líneas hermanas sí avisan.
+// un caso observado, cuyas dos líneas hermanas sí avisan.
 void calla_sin_evidencia(int fd) {
     std::array<uint8_t, 6> almacen;
     read_n(fd, almacen.data(), almacen.size());

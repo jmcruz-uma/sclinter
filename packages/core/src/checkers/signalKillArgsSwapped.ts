@@ -73,8 +73,8 @@ export function findSignalKillArgsSwappedIssues(
         startIndex: arg0.startIndex,
         endIndex: arg0.endIndex,
         message:
-          `kill(${arg0.text}, ...) — el primer argumento de kill() es el pid, el segundo la señal. ` +
-          `Parece que están al revés (kill(pid_t pid, int sig)).`,
+          `kill(${arg0.text}, ...): el primer argumento de kill() es el pid, el segundo la ` +
+          `señal. Parece que están al revés (asegúrate con: man 2 kill).`,
       });
     }
 
@@ -83,8 +83,8 @@ export function findSignalKillArgsSwappedIssues(
         startIndex: arg1.startIndex,
         endIndex: arg1.endIndex,
         message:
-          `signal(..., ${arg1.text}) — el primer argumento de signal() es la señal, el segundo el ` +
-          `manejador. Parece que están al revés (signal(int signum, sighandler_t handler)).`,
+          `signal(..., ${arg1.text}): el primer argumento de signal() es la señal, el ` +
+          `segundo el manejador. Parece que están al revés (asegúrate con: man 2 signal).`,
       });
     }
   }

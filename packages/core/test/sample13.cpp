@@ -8,7 +8,7 @@
 ssize_t read_n(int fd, void* data, size_t n);
 ssize_t write_n(int fd, const void* data, size_t n);
 // Los estudiantes reescriben los helpers de la referencia con otros nombres
-// (en dos convocatorias, más de la mitad de la clase usa la forma sin guion
+// (en el uso real, la mayoría usa la forma sin guion
 // bajo). Todos los checkers los reconocen desde `funcionesDeES.ts`.
 ssize_t readn(int fd, void* data, size_t n);
 ssize_t writen(int fd, const void* data, size_t n);

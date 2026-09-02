@@ -2,18 +2,18 @@
 //
 // POR QUÉ EXISTE (medido, no supuesto): cada checker llevaba su propia lista
 // literal, y todas conocían `read_n`/`write_n` pero casi ninguna la variante
-// sin guion bajo. En las dos convocatorias más recientes esa variante NO es
+// sin guion bajo. En el uso real esa variante NO es
 // una manía aislada: `readn`/`writen` aparece en 126 de los 233 ficheros de
-// Evaluacion3 y en 54 de los 92 de Evaluacion4, mientras que la referencia que
+// las pruebas y en 54 de los 92 de las pruebas, mientras que la referencia que
 // se reparte declara `read_n`. Se midió el coste renombrando una copia del
-// corpus y volviendo a barrer: 10 detecciones reales perdidas (lecturas sobre
+// conjunto de pruebas y volviendo a barrer: 10 detecciones reales perdidas (lecturas sobre
 // `&std::string`, `.size()` de arrays de `int`/`uint32_t` como número de
 // bytes, `&array` en E/S) y 4 avisos que salían con el diagnóstico de
 // normativa en vez del mecánico, que es el preciso.
 //
 // La decisión anterior fue no perseguir la variante "porque es problema del
-// alumno por renombrar la referencia". Con Evaluacion1 y Evaluacion2 delante
-// (6% y 8% de los ficheros) era razonable; con más de la mitad de la clase
+// alumno por renombrar la referencia". Con las pruebas y las pruebas delante
+// (6% y 8% de los ficheros) era razonable; con más de la mitad
 // escribiéndolo así, ya no. Es probable que en algún laboratorio se repartiera
 // una referencia con esos nombres.
 //
@@ -40,7 +40,7 @@
 // una función distinta de las que ya miraba.
 
 /** Cómo escriben los estudiantes el helper de lectura de la referencia.
- * `readN`/`read_N` no aparecen en ninguno de los cuatro corpus: entran como
+ * `readN`/`read_N` no aparecen en el conjunto de pruebas: entran como
  * preventivas, igual que en su día `io-vector-data`. */
 export const VARIANTES_READ_N = ["read_n", "readn", "readN", "read_N"];
 export const VARIANTES_WRITE_N = ["write_n", "writen", "writeN", "write_N"];

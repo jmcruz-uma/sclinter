@@ -75,14 +75,15 @@ export function findMemcpyContainerAddressDestinationIssues(
       const consejo =
         type === "std::vector"
           ? `Usa ${target.text}.data() sobre contenido ya reservado (tras resize()), no la dirección del objeto en sí.`
-          : `En esta asignatura, además, escribir con memcpy en un std::string está prohibido incluso vía .data() — usa los métodos propios del contenedor.`;
+          : "Escribir con memcpy() en un std::string es muy delicado y propenso a errores. " +
+          "Utiliza los métodos propios de std::string para rellenarlo.";
       findings.push({
         startIndex: arg0.startIndex,
         endIndex: arg0.endIndex,
         message:
-          `memcpy sobre &${target.text} sobreescribe la representación interna del ${type}, ` +
-          `no su contenido — esto es comportamiento indefinido casi seguro (su contenido vive en ` +
-          `otra dirección, no en el propio objeto). ${consejo}`,
+          `memcpy() sobre &${target.text} sobreescribe la representación interna del ` +
+          `${type}, pero no su buffer de datos (que está en una dirección de memoria ` +
+          `diferente). ${consejo}`,
       });
     }
   }

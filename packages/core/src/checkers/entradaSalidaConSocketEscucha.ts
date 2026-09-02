@@ -132,9 +132,10 @@ export function findEntradaSalidaConSocketEscuchaIssues(
                     startIndex: arg.startIndex,
                     endIndex: arg.endIndex,
                     message:
-                      `${arg.text}${nota} es el socket que espera conexiones. En esta asignatura no se ` +
-                      `pasa ese descriptor a funciones propias como ${bare}() — si necesitas hablar con ` +
-                      `el cliente, pasa el socket que devolvió accept().`,
+                      `${arg.text}${nota} es el socket que espera conexiones. No es normal ` +
+                      `pasarle este descriptor a funciones propias como ${bare}(). Si ` +
+                      `necesitas hablar con el cliente, pásale el socket que devolvió ` +
+                      `accept().`,
                   });
                 }
               }

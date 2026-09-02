@@ -12,7 +12,7 @@ import Parser from "web-tree-sitter";
 // solo comprobaba presencia en cualquier punto de la función, sin mirar
 // en qué rama estaba.
 //
-// EXCEPCIÓN (falso positivo real, alumno_005 de Evaluacion): recoger a
+// EXCEPCIÓN (falso positivo real observado): recoger a
 // los hijos DENTRO de la manejadora de SIGCHLD es un modo válido —y de
 // hecho el más idiomático— de evitar zombis, aunque el wait()/waitpid()
 // quede en otra función distinta de la que hace el fork():
@@ -242,8 +242,8 @@ export function findZombiesSinReapIssues(
         startIndex: forkCall.startIndex,
         endIndex: forkCall.endIndex,
         message:
-          "No se ve ni wait()/waitpid() ni signal(SIGCHLD, SIG_IGN) en esta función. Sin uno de " +
-          "los dos, los procesos hijo terminados se quedan como zombis.",
+          "No se ha encontrado ninguna llamada a wait(), waitpid() o signal(SIGCHLD, " +
+          "SIG_IGN). Es posible que los procesos hijos queden zombies.",
       });
     }
   }

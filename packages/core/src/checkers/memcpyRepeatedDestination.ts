@@ -94,7 +94,7 @@ import { ESCRITURAS } from "./funcionesDeES";
 // distintos es normal (`memcpy(&INFO, mensaje.data()+2, 4)` en la rama del
 // teclado y `memcpy(&INFO, almacen+2, 4)` en la del socket). Lo que sí es
 // bug es extraer dos campos del MISMO buffer sobre la misma variable
-// (alumno_028: `&ack` desde `almacen+1` y desde `almacen+3`, cuando el
+// (un caso observado: `&ack` desde `almacen+1` y desde `almacen+3`, cuando el
 // primero debía ser `&seq`). La regla pregunta "¿has olvidado avanzar
 // dentro del mismo mensaje?" — si los orígenes son mensajes distintos, la
 // pregunta no aplica.
@@ -143,7 +143,7 @@ function enclosingFunction(node: Parser.SyntaxNode): Parser.SyntaxNode | null {
 // acentuadas NO casan con `[A-Za-z_]\w*` (ni `\w` incluye no-ASCII), así
 // que con la regex antigua `trailingOffsetVarName("almacen.data()+tamaño")`
 // devolvía null y NO se comprobaba la reasignación del offset (`tamaño +=
-// 2`) → falso positivo real (alumno_020). Con `\p{L}` y el flag /u sí casa.
+// 2`) → falso positivo real observado. Con `\p{L}` y el flag /u sí casa.
 const IDENT = "[\\p{L}_][\\p{L}\\p{N}_]*";
 
 /** Si el texto termina en "+ variable" o "[variable]", devuelve el nombre de
@@ -346,15 +346,15 @@ function sentBetween(fn: Parser.SyntaxNode, name: string, fromIndex: number, toI
 
 function mensajeBuffer(dstText: string): string {
   return (
-    `Este memcpy escribe en el mismo destino que otro memcpy anterior en la misma función ` +
-    `("${dstText}"), sin desplazamiento de por medio. ¿Has olvidado avanzar el puntero ` +
-    `para no pisar lo que ya habías escrito?`
+    `Este memcpy() escribe en el mismo destino que otro memcpy() anterior en la misma ` +
+    `función ("${dstText}"), sin desplazamiento de por medio. ¿Has olvidado avanzar el ` +
+    `puntero para no pisar lo que ya habías escrito?`
   );
 }
 
 function mensajeEscalar(dstText: string): string {
   return (
-    `Este memcpy y otro anterior extraen del mismo buffer sobre la misma variable ` +
+    `Este memcpy() y otro anterior extraen del mismo buffer sobre la misma variable ` +
     `("${dstText}"), con desplazamientos distintos: el segundo pisa el valor del primero. ` +
     `¿Querías dos variables distintas?`
   );

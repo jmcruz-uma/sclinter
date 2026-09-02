@@ -34,7 +34,7 @@ void bien_recepcion_memcpy(int fd, char* buffer) {
 
 // CALLA: la misma extracción, pero escrita con `mempcpy` (extensión GNU de
 // `memcpy`: misma firma, solo cambia el valor de retorno). Caso real del
-// corpus — antes se avisaba aquí porque el nombre no se reconocía como
+// conjunto de pruebas — antes se avisaba aquí porque el nombre no se reconocía como
 // extracción y `longitud` parecía de origen local.
 void bien_recepcion_mempcpy(int fd, char* buffer) {
     uint8_t almacen[64];
@@ -91,7 +91,7 @@ void bug_envio_local(const char* texto, char* buffer) {
 }
 
 // AVISA: valor recibido de red, reconvertido a orden de red para reenviarlo
-// y luego usado en un bucle local (estilo alumno_053): dos conversiones,
+// y luego usado en un bucle local (estilo un caso observado): dos conversiones,
 // queda en orden de red en el uso.
 void bug_reenvio_usado_en_bucle(int fd, char* buffer) {
     uint16_t num_be;

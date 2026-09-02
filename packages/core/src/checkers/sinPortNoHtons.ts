@@ -66,7 +66,7 @@ import { macrosDelFichero } from "./byteswapSobreValorSinTipo";
 // dentro de la función — puede ser una constante global) y se mira si el
 // inicializador menciona "endian".
 //
-// DOS CORRECCIONES MÁS, de un tercer examen (convocatoria UDP/DNS). Las dos
+// DOS CORRECCIONES MÁS, de un tercer conjunto de casos. Las dos
 // son falsos positivos sobre código correcto, y las dos son la misma idea de
 // siempre —reconocer un idioma equivalente— aplicada un paso más allá:
 //
@@ -185,7 +185,7 @@ function declaracionInicializadaConEndian(root: Parser.SyntaxNode, name: string)
 }
 
 /** ¿Es `name` una BANDERA de endianness, es decir, un `bool` cuyo valor lo
- * decide una comprobación de endianness hecha en un `if`? Caso real de examen:
+ * decide una comprobación de endianness hecha en un `if`? Caso real :
  *   bool soylittle = false;
  *   if (std::endian::native == std::endian::little) soylittle = true;
  *   ...
@@ -364,7 +364,7 @@ function protegidoPorIfPosteriorDeEndianness(node: Parser.SyntaxNode, field: str
  * debe seguir avisando).
  *
  * "Origen simple" incluye un CAMPO DE STRUCT (`cliente.puerto`, `p->puerto`),
- * no solo un identificador pelado — caso real de examen: el alumno guarda el
+ * no solo un identificador pelado — caso real : el alumno guarda el
  * puerto ya convertido en un campo de su propia struct y lo asigna desde ahí.
  * La comparación es por texto normalizado, así que `a.p` y `a->p` no se
  * confunden (el operador forma parte del texto). */
@@ -512,7 +512,7 @@ function valorUsaMacroConvertidora(
   return encontrada;
 }
 
-const MENSAJE = "El valor asignado a sin_port no parece correcto. Revísalo antes de entregar.";
+const MENSAJE = "El valor asignado a sin_port no parece correcto.";
 
 /** Nivel 4 (normativa): el código funciona, pero la conversión queda
  * escondida detrás de un nombre de macro. Mensaje explícito, a diferencia
@@ -521,11 +521,10 @@ const MENSAJE = "El valor asignado a sin_port no parece correcto. Revísalo ante
  * de la macro. */
 function mensajeMacro(macro: string): string {
   return (
-    `El valor de sin_port viene de la macro ${macro}, que esconde la conversión de orden de bytes ` +
-    `dentro de su definición. Es una práctica desaconsejada: el puerto se declara como una ` +
-    `constante con tipo y la conversión queda a la vista en el punto de uso: ` +
-    `\`const uint16_t PUERTO = 54321;\` y luego \`dir.sin_port = htons(PUERTO);\`. ` +
-    `Una macro no tiene tipo (la sustituye el preprocesador) y oculta lo que de verdad le pasa al valor.`
+    `El valor de sin_port viene de la macro ${macro}, que esconde la conversión de orden ` +
+    `de bytes dentro de su definición. Evita el uso de macros, especialmente cuando ` +
+    `realizan acciones, porque el preprocesador las sustituye y es fácil que se enmascaren ` +
+    `errores.`
   );
 }
 

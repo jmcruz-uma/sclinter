@@ -5,7 +5,7 @@
 #include <unistd.h>
 
 // sample45 — memcpy-destino-repetido, tanda de correcciones 4 a 8
-// (sondeo de falsos positivos de 2026-07-26: 11 de los 16 avisos del corpus
+// (sondeo de falsos positivos de 2026-07-26: 11 de los 16 avisos del conjunto de pruebas
 // eran falsos positivos).
 //
 // Causa raíz: el nombre base del destino se sacaba con una regex anclada al
@@ -22,7 +22,7 @@ ssize_t write_n(int fd, const void *buf, size_t n);
 
 // La misma extracción repetida en dos ramas mutuamente excluyentes. Mismo
 // destino y mismo origen: la segunda copia deja la variable igual que la
-// primera, no pisa nada. (Patrón de alumno_047; 2 de los 11 FP.)
+// primera, no pisa nada. (Patrón de un caso observado; 2 de los 11 FP.)
 void ramas_excluyentes_misma_extraccion(std::array<uint8_t, 5> mensaje, int *evento) {
     uint16_t seq;
     if (mensaje[0] == 1) {
@@ -37,7 +37,7 @@ void ramas_excluyentes_misma_extraccion(std::array<uint8_t, 5> mensaje, int *eve
 // Redeclaración con DOS declaradores en la misma sentencia: `uint8_t TIPO,
 // id_SLOT;` produce dos campos `declarator` hermanos y antes solo se miraba
 // el primero, así que `id_SLOT` era invisible como redeclaración.
-// (Patrón de alumno_015 ej2.)
+// (Patrón de un caso observado.)
 void redeclaracion_de_dos_en_una_linea(const uint8_t *almacen, std::array<uint8_t, 6> mensaje) {
     uint8_t TIPO, id_SLOT;
     std::memcpy(&TIPO, almacen, 1);
@@ -72,7 +72,7 @@ void sombreado_declarado_antes_de_la_primera_llamada(const uint8_t *src, int con
 
 // Variable de paso reutilizada para extraer de DOS buffers distintos: son
 // extracciones sin relación, no un olvido de desplazamiento.
-// (Patrón de alumno_015 ej1 L145.)
+// (Patrón de un caso observado L145.)
 void misma_variable_dos_buffers(std::array<uint8_t, 6> mensaje, const char *almacen) {
     uint32_t INFO;
     std::memcpy(&INFO, mensaje.data() + 2, 4);
@@ -105,7 +105,7 @@ void puntero_que_avanza(std::array<uint8_t, 8> buffer, uint16_t a, uint16_t b) {
 
 // Dos campos DISTINTOS del mismo buffer sobre la misma variable: el segundo
 // pisa al primero. El alumno quería `&seq` en la primera línea.
-// (Bug real de alumno_028; mensaje de la variante escalar.)
+// (Bug real de un caso observado; mensaje de la variante escalar.)
 void dos_campos_a_la_misma_variable(const uint8_t *almacen) {
     uint16_t ack;
     std::memcpy(&ack, almacen + 1, 2);
@@ -114,7 +114,7 @@ void dos_campos_a_la_misma_variable(const uint8_t *almacen) {
 }
 
 // Construcción de PDU sin avanzar el puntero: mismo destino, orígenes
-// distintos. (Bug real de alumno_010; mensaje de la variante buffer.)
+// distintos. (Bug real de un caso observado; mensaje de la variante buffer.)
 void pdu_sin_avanzar(std::array<uint8_t, 6> buffer, uint8_t id, uint32_t info) {
     std::memcpy(buffer.data() + 1, &id, 1);
     std::memcpy(buffer.data() + 1, &info, 4);

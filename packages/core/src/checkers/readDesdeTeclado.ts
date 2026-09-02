@@ -45,8 +45,8 @@ export function findReadDesdeTecladoIssues(
             startIndex: n.startIndex,
             endIndex: n.endIndex,
             message:
-              "En esta asignatura, la entrada por teclado se trata siempre como una secuencia de " +
-              "caracteres — usa std::cin o std::getline() en vez de read() aquí.",
+              "La entrada por teclado se trata siempre como una secuencia de caracteres. " +
+              "Utiliza std::cin o std::getline() en vez de read() aquí.",
           });
         }
       }

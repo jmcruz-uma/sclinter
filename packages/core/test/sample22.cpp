@@ -36,7 +36,7 @@ void bug_alfa_array_de_punteros(int fd) {
 
 // --- CONTROL DELICADO: `char *argv[]` tiene la MISMA forma, pero como
 // PARÁMETRO decae a char** y ahí sizeof sí vale 8. Debe seguir dando el
-// mensaje de puntero, no el de array de punteros. En el corpus esta forma
+// mensaje de puntero, no el de array de punteros. En el conjunto de pruebas esta forma
 // aparece 314 veces, así que equivocarse aquí sería caro. ---
 void bug_alfa_argv_es_parametro(int argc, char *argv[]) {
     size_t n = sizeof(argv);

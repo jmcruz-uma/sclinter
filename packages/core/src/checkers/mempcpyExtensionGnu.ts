@@ -81,8 +81,8 @@ export function findMempcpyExtensionGnuIssues(
           startIndex: n.startIndex,
           endIndex: n.endIndex,
           message:
-            "mempcpy es una extensión propia de GNU, pero no forma parte del estándar y tampoco " +
-            "existe std::mempcpy en C++. Aquí preferimos usar memcpy o std::memcpy",
+            "mempcpy() es una extensión propia de GNU que no forma parte del estándar C ni " +
+            "de C++. Utiliza memcpy() o std::memcpy()",
         });
       }
     }

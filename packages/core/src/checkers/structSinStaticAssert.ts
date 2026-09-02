@@ -160,10 +160,10 @@ export function findStructSinStaticAssertIssues(
               startIndex: arg.startIndex,
               endIndex: arg.endIndex,
               message:
-                `&${target.text} es un ${type} y se envía/recibe entero con ${bare}(), pero no hay ` +
-                `ningún static_assert(sizeof(${type}) == N) en el fichero. El compilador puede meter ` +
-                `padding entre campos — sin el static_assert no hay garantía de que sizeof(${type}) sea ` +
-                `el tamaño real del protocolo.`,
+                `&${target.text} es un ${type} y se envía/recibe entero con ${bare}(), ` +
+                `pero no hay ningún static_assert(sizeof(${type}) == N) en el fichero. El ` +
+                `compilador puede meter padding entre campos y, sin el static_assert, no ` +
+                `hay garantía de que sizeof(${type}) sea el tamaño N correcto del mensaje.`,
             });
           }
         }

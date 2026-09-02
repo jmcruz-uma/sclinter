@@ -131,10 +131,10 @@ export function findMemcpyStringDataProhibitedIssues(
         startIndex: arg0.startIndex,
         endIndex: arg0.endIndex,
         message:
-          `memcpy con ${name}.data() como destino está prohibido en esta asignatura, ` +
-          `independientemente de si el tamaño cuadra. std::string gestiona su terminador y su ` +
-          `tamaño internamente — usa los métodos propios del contenedor (resize, assign, append, ` +
-          `operator+=) en vez de escribir sobre su buffer a bajo nivel.`,
+          `memcpy() con ${name}.data() como destino es muy delicado y propenso a errores, ` +
+          `independientemente de si el tamaño cuadra. std::string gestiona su terminador y ` +
+          `su tamaño internamente, así que usa los métodos propios del contenedor (resize, ` +
+          `assign, append, operator+=) en vez de escribir sobre su buffer a bajo nivel.`,
       });
     }
   }

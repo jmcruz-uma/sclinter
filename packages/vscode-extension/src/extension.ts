@@ -43,7 +43,7 @@ function revisarDocumento(document: vscode.TextDocument): void {
     );
     const diag = new vscode.Diagnostic(range, f.message, vscode.DiagnosticSeverity.Warning);
     diag.source = "sclinter";
-    diag.code = f.ruleId;
+    diag.code = f.codigo;
     return diag;
   });
 

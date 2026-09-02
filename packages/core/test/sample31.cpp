@@ -9,7 +9,7 @@
 // es el struct_specifier ENTERO (cuerpo incluido), no un type_identifier,
 // así que declaredTypeOf() devolvía toda la definición como "tipo" y no
 // casaba con el nombre del struct. Debe avisar igual que la forma
-// separada (`T var;`). Caso real observado en una entrega de examen.
+// separada (`T var;`). Caso real observado en una entrega .
 
 ssize_t write_n(int fd, const void* data, size_t n);
 

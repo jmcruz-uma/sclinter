@@ -7,7 +7,7 @@
 // sample44 — conversion-escondida-en-macro (nivel 4, normativa), y los
 // controles de que sin-port-no-htons (nivel 2) sigue haciendo su trabajo.
 //
-// Caso real: alumno_069 escribió `#define PORT (htons(54321))` y luego
+// Caso real: un caso observado escribió `#define PORT (htons(54321))` y luego
 // `dir.sin_port = PORT;`. El código FUNCIONA — el puerto acaba bien —, así
 // que el aviso de sin-port-no-htons ("no parece correcto") era un falso
 // positivo. Pero la macro esconde justo la conversión que se está

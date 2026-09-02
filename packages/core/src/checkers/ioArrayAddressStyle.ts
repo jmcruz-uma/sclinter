@@ -7,7 +7,7 @@ import { ES_COMPLETA } from "./funcionesDeES";
 // &arr como buffer con un std::array es correcto (&arr == arr.data()),
 // pero se marca igual por consistencia de hábito con std::string/vector.
 //
-// CORRECCIÓN (falso positivo real, alumno_021 Evaluacion2): antes se
+// CORRECCIÓN (falso positivo real observado): antes se
 // recogían los nombres declarados como std::array en la FUNCIÓN ENTERA y se
 // preguntaba solo "¿este nombre está en el conjunto?", sin noción de
 // ámbito. Con dos variables distintas del mismo nombre —un
@@ -53,9 +53,10 @@ export function findIoArrayAddressStyleIssues(
                 startIndex: buf.startIndex,
                 endIndex: buf.endIndex,
                 message:
-                  `[estilo, no error] &${target.text} funciona correctamente aquí — para std::array, ` +
-                  `&variable y variable.data() son la misma dirección. Aun así, en esta asignatura se usa ` +
-                  `siempre ${target.text}.data(), por consistencia con std::string y std::vector.`,
+                  `Aunque &${target.text} funciona correctamente aquí (ya que para ` +
+                  `std::array, &variable y variable.data() representan la misma dirección ` +
+                  `de memoria), deberías utilizar siempre ${target.text}.data(), por ` +
+                  `consistencia con otros contenedores donde eso no sucede.`,
               });
             }
           }

@@ -67,7 +67,7 @@ export function findForkAntesDeAcceptIssues(
         findings.push({
           startIndex: forkCall.startIndex,
           endIndex: forkCall.endIndex,
-          message: "Este fork() ocurre antes de aceptar ninguna conexión. Revisa el orden respecto a accept().",
+          message: "Este fork() ocurre antes de aceptar ninguna conexión. Revisa tu diseño.",
         });
       }
     }
