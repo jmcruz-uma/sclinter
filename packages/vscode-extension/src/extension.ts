@@ -41,7 +41,7 @@ function revisarDocumento(document: vscode.TextDocument): void {
       document.positionAt(f.startIndex),
       document.positionAt(f.endIndex)
     );
-    const diag = new vscode.Diagnostic(range, f.message, vscode.DiagnosticSeverity.Warning);
+    const diag = new vscode.Diagnostic(range, `(${f.codigo}) ${f.message}`, vscode.DiagnosticSeverity.Warning);
     diag.source = "sclinter";
     diag.code = f.codigo;
     return diag;
