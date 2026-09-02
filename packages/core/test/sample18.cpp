@@ -212,7 +212,7 @@ void bien_offset_mas_igual_con_suma(const char* texto) {
 }
 
 // --- Resta: PDU construida del final hacia el principio ---
-// No hay ningún caso así en los corpus de examen; entra de forma preventiva.
+// No hay ningún caso así en el conjunto de pruebas; entra de forma preventiva.
 // El signo da igual: lo que importa es que un valor en orden de red intervenga
 // en la cuenta.
 
@@ -251,7 +251,7 @@ void bien_restas_sin_convertir(int fd, const char* texto, char* mensaje) {
 
 // CORRECTO: el contador de un bucle de lectura, que es como está escrito el
 // helper read_n de la referencia. `leidos` nunca viene convertido, así que los
-// cientos de `por_leer -= leidos` del corpus deben seguir en silencio.
+// cientos de `por_leer -= leidos` del conjunto de pruebas deben seguir en silencio.
 void bien_contador_de_bucle(int fd, char* buffer, size_t n) {
     size_t por_leer = n;
     while (por_leer > 0) {

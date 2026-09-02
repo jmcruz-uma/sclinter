@@ -21,7 +21,7 @@ import Parser from "web-tree-sitter";
 //     for(;;), do{...}while(1) — el hijo nunca cae por el final.
 // Se IGNORAN los comentarios: en tree-sitter son nodos `comment` dentro de
 // `namedChildren`, y sin filtrarlos un `exit(0); // ...` tomaba el comentario
-// como última sentencia y avisaba de más (falso positivo real del corpus).
+// como última sentencia y avisaba de más (falso positivo real del conjunto de pruebas).
 // LÍMITE DELIBERADO: un bucle CON condición (while(cond)/for(cond)) se
 // considera que puede caer por el final. Es a propósito: si el hijo sirve y
 // luego cae al bucle de fork del padre, es justo el fork-bomb que hay que

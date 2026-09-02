@@ -44,7 +44,7 @@ function enclosingFunction(node: Parser.SyntaxNode): Parser.SyntaxNode | null {
  * PARÁMETRO, `char *argv[]` decae a `char**` y ahí `sizeof` sí vale 8, así que
  * el segundo mensaje sería falso. Por eso "array-de-punteros" solo se devuelve
  * para declaraciones locales (`declaration`), nunca para
- * `parameter_declaration`. En el corpus `char *argv[]` aparece 314 veces. */
+ * `parameter_declaration`. En el conjunto de pruebas `char *argv[]` aparece 314 veces. */
 type ClaseDePuntero = "puntero" | "array-de-punteros";
 
 function declaredTypeIsPointer(

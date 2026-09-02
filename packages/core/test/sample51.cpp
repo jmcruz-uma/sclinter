@@ -7,7 +7,7 @@
 // sample51 — envio-de-buffer-sin-rellenar.
 //
 // La regla persigue la CONSECUENCIA (se manda memoria sin escribir), no la
-// intención, que es inadivinable: los dos casos reales del corpus llegan al
+// intención, que es inadivinable: los dos casos reales del conjunto de pruebas llegan al
 // mismo sitio por caminos distintos — uno no rellena nada y el otro rellena
 // el buffer equivocado.
 //
@@ -49,13 +49,13 @@ static_assert(sizeof(PduAMedias) == 8);
 // Deben AVISAR
 // ============================================================
 
-// Caso de alumno_018: se declara la PDU y se envía sin tocarla.
+// Caso de un caso observado: se declara la PDU y se envía sin tocarla.
 void struct_sin_rellenar(int sd) {
     Pdu suscripcion;
     write_n(sd, &suscripcion, sizeof(suscripcion));
 }
 
-// Caso de alumno_011: rellena un buffer y envía OTRO. El despiste es de
+// Caso de un caso observado: rellena un buffer y envía OTRO. El despiste es de
 // nombres, pero la consecuencia es comprobable.
 void rellena_uno_y_envia_otro(int sd, uint16_t valor) {
     std::array<char, 10> almacen;
@@ -100,7 +100,7 @@ void declarado_con_inicializador(int sd) {
 // solo argumento (o con argumentos que podrían leerse como declaraciones de
 // parámetros) tree-sitter parsea la declaración como `function_declarator` y
 // no como `init_declarator`, porque sin tabla de símbolos `T(x);` es ambiguo
-// en C++. Estos tres casos daban falso positivo sobre entregas reales.
+// en C++. Estos tres casos daban falso positivo sobre casos reales.
 void construido_con_parentesis(int sd, char **argv) {
     std::string dominio(argv[3]);
     write_n(sd, dominio.data(), dominio.size());

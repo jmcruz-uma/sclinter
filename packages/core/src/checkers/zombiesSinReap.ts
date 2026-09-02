@@ -12,7 +12,7 @@ import Parser from "web-tree-sitter";
 // solo comprobaba presencia en cualquier punto de la función, sin mirar
 // en qué rama estaba.
 //
-// EXCEPCIÓN (falso positivo real, alumno_005 de Evaluacion): recoger a
+// EXCEPCIÓN (falso positivo real observado): recoger a
 // los hijos DENTRO de la manejadora de SIGCHLD es un modo válido —y de
 // hecho el más idiomático— de evitar zombis, aunque el wait()/waitpid()
 // quede en otra función distinta de la que hace el fork():

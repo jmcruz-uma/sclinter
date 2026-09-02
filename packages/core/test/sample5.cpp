@@ -5,7 +5,7 @@
 void manejadora(int signum) { (void)signum; }
 
 void bug_kill_invertido(pid_t pid_padre) {
-    // Caso real del catálogo (alumno_002, ejercicio 3).
+    // Caso real del catálogo (un caso observado, ejercicio 3).
     kill(SIGUSR1, pid_padre);
 }
 

@@ -10,7 +10,7 @@
 // función entera y solo preguntaba "¿está este nombre en el conjunto?".
 // Con dos variables distintas del mismo nombre se equivocaba de una y
 // llegaba a recomendar `buffer.data()` sobre un `char` — un consejo que ni
-// siquiera compila (falso positivo real de alumno_021, Evaluacion2).
+// siquiera compila (falso positivo real de un caso observado, las pruebas).
 
 ssize_t read_n(int fd, void *data, size_t n);
 
@@ -18,7 +18,7 @@ ssize_t read_n(int fd, void *data, size_t n);
 // Debe CALLAR
 // ============================================================
 
-// El caso de alumno_021: el `char buffer` interno sombrea al std::array de
+// El caso de un caso observado: el `char buffer` interno sombrea al std::array de
 // la función. `&buffer` es aquí la única forma correcta de escribirlo.
 // En la MISMA función, el uso de fuera del bloque sí se refiere al array y
 // sigue avisando — es lo que distingue la resolución de ámbito de verdad de

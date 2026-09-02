@@ -11,7 +11,7 @@ import Parser from "web-tree-sitter";
 // "¿este nombre está en el conjunto?". Sin noción de ámbito, dos variables
 // distintas con el mismo nombre se confunden.
 //
-// Caso real que lo destapó (alumno_021, Evaluacion2 ej1):
+// Caso real que lo destapó:
 //
 //   int esperar_evento(...) {
 //       std::array<char, 10> buffer;        // ámbito de la función
@@ -29,12 +29,12 @@ import Parser from "web-tree-sitter";
 // desde el punto de uso por los bloques que lo contienen y, en cada uno, se
 // buscan declaraciones de ese nombre ANTERIORES al uso; gana la más
 // interna. Los parámetros de la función hacen de ámbito exterior. No se
-// modela using/namespace/clases: para el código de estos exámenes
+// modela using/namespace/clases: para el código que se analiza aquí
 // (funciones libres con variables locales) es suficiente, y ante la duda
 // devuelve null, que las reglas interpretan como silencio.
 //
 // ADOPCIÓN INCREMENTAL (decisión del profesor, 2026-07-26): se aplica a una
-// regla cada vez, midiendo el corpus entre medias. La primera es
+// regla cada vez, midiendo el conjunto de pruebas entre medias. La primera es
 // io-array-direccion-estilo, que es donde había un falso positivo medido;
 // las otras cuatro no tienen ninguno, así que se irán pasando de una en una.
 

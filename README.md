@@ -1,10 +1,10 @@
-# sclinter (una herramienta para la asignatura Software de Comunicaciones)
+# sclinter (una herramienta de ayuda para la asignatura Software de Comunicaciones)
 
-Este proyecto incluye dos herramientas de tipo **linter**, que buscan errores de concepto en el código habitual que implementamos en la asignatura Software de Comunicaciones de la ETSI Telecomunicaicón, en la Universidad de Málaga. Un linter no es un compilador, ni tampco ejecuta nada. Se basa en buscar reglas preestablecidas y, en algunas ocasiones podría dar falsos positivos (decir que algo está mal cuando está bien) o negativos (no detectar algún fallo flagrante). Tómenlo como una ayuda, ¡aunque no sea infalible!
+Este proyecto incluye dos herramientas de tipo **linter**, que señalan errores mecánicos y de concepto en los códigos que implementamos en la asignatura Software de Comunicaciones de la ETSI Telecomunicación, en la Universidad de Málaga. Un linter no es un compilador, ni tampoco ejecuta nada. Se basa en buscar reglas preestablecidas y, en algunas ocasiones, podría dar falsos positivos (decir que algo está mal cuando está bien) o negativos (no detectar algún fallo flagrante). Tómenlo como una ayuda, ¡aunque no sea infalible!
 
-Las herramientas que aquí se incluyen son una interfaz de línea de comandos (*cli*, basada en node.js) y una extensión para Visual Studio Code. Ambas dependen de un motor de reglas.
+Las herramientas que aquí se incluyen son una interfaz de línea de comandos (*cli*, basada en node.js) y una extensión para Visual Studio Code. Ambas dependen de un mismo motor de reglas.
 
-Organización del repositorio
+Organización del repositorio:
 
 ```
 packages/
@@ -13,7 +13,7 @@ packages/
 └── vscode-extension/  extensión para VS Code
 ```
 
-## Arranque rápido
+## La herramienta en modo comando (CLI): arranque rápido
 
 ```
 npm install           # una sola vez, instala los tres paquetes
@@ -51,7 +51,8 @@ npm run build:extension     # build:core + sincroniza + compila la extensión
 npm run package:extension   # todo lo anterior + genera el .vsix
 ```
 
-El `.vsix` resultante aparece en `packages/vscode-extension/*.vsix`.
+El fichero `.vsix` resultante aparece en `packages/vscode-extension/*.vsix`. Es el que hay que instalar en VS Code.
+
 
 ### Para cambiar el número de versión el `.vsix`
 
@@ -63,3 +64,5 @@ El `.vsix` resultante aparece en `packages/vscode-extension/*.vsix`.
 ## Documentación adicional
 
 - `docs/uso-cli.md` : contiene las instrucciones para instalar y usar el linter en modo consola, el CLI
+
+- `docs/catalogo-reglas.md` : enumera y explica cada una de las reglas que se chequean, organizadas por familias, con un código por regla

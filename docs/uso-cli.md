@@ -42,10 +42,15 @@ sclinter mi_ejercicio.cpp
 ```
 === Informe previo a entrega — mi_ejercicio.cpp ===
 
-  [línea 40] (argc-argv-desajuste) Se compara argc contra 3 en esta...
+  [línea 40] (SC31) Se compara argc contra 3 en esta...
 
 1 aviso(s). Revísalos antes de entregar — no bloquean la entrega...
 ```
+
+`SC31` es el **código de la regla**. Con él puedes buscar en
+[`catalogo-reglas.md`](catalogo-reglas.md) qué significa el aviso y por qué
+salta. Los códigos van por familias —`SC5x` son procesos, `SC6x` tuberías…— y
+no cambian nunca, así que puedes anotarlos.
 
 - **No es un compilador**: si tu código no compila, eso se arregla aparte
   (`g++ -Wall` primero, siempre).

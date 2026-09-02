@@ -13,7 +13,7 @@ ssize_t write_n(int fd, const void *data, size_t n);
 
 // CALLA: el byteswap "de vuelta a red" está en la rama `if` (para enviar) y
 // el uso está en el `else if` HERMANO, donde len sigue en orden de host
-// porque esa rama no se ejecutó. Caso real de una entrega de examen.
+// porque esa rama no se ejecutó. Caso real de una entrega .
 void bien_ramas_hermanas(int fd, uint16_t otra) {
     uint16_t len;
     read_n(fd, &len, 2);

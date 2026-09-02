@@ -37,13 +37,13 @@ import { LECTURAS, ES_COMPLETA } from "./funcionesDeES";
 // mismo nivel de rigor que zombies-sin-reap/hijo-sin-terminar.
 //
 // ---------------------------------------------------------------------------
-// PASE DE REVISIÓN DEL CORPUS (2026-07-27)
+// PASE DE REVISIÓN SOBRE CASOS REALES (2026-07-27)
 // ---------------------------------------------------------------------------
 //
-// Los 44 avisos que esta regla daba sobre el corpus de exámenes se revisaron
+// Los 44 avisos que esta regla daba sobre el conjunto de pruebas se revisaron
 // uno a uno y se cruzaron con el informe de corrección MANUAL
-// (`Evaluacion2/anonimos/evaluacion.txt`), que es la verdad de referencia.
-// Los 44 caían todos en Evaluacion2, en 26 ficheros y 32 pares
+// (la revisión manual), que es la verdad de referencia.
+// Los 44 caían todos en las pruebas, en 26 ficheros y 32 pares
 // (fichero, variable) — 12 avisos son usos repetidos de la misma variable.
 // Quedaron así:
 //
@@ -74,19 +74,19 @@ import { LECTURAS, ES_COMPLETA } from "./funcionesDeES";
 //     retorno se descarta, funciona igual".
 //
 // Conclusión: fuera del `mempcpy`, la regla no tenía falsos positivos sobre el
-// corpus.
+// conjunto de pruebas.
 //
 // ---------------------------------------------------------------------------
 // POR QUÉ NO SE LEVANTA `swaps >= 1` (debatido y MEDIDO el 2026-07-29)
 // ---------------------------------------------------------------------------
 //
 // La tentación es evidente: un valor que llega de la red y se usa en local SIN
-// convertir también está mal, y el informe de corrección de Evaluacion4 lo
+// convertir también está mal, y el informe de corrección de las pruebas lo
 // penaliza en cinco alumnos ("no pasa a formato de host la métrica recibida").
 // Se probó a levantarlo, exigiendo además anchura multibyte demostrada para
 // dejar fuera los campos de un byte. Resultado del barrido: +56 avisos, y
-// CUATRO de ellos sobre la solución oficial del profesor (Evaluacion2,
-// ejemplo_soluciones_cpp/ejercicio3.cpp, líneas 129 y 147-153). El motivo es su
+// CUATRO de ellos sobre una solución oficial del profesor (ejercicio3.cpp,
+// líneas 129 y 147-153). El motivo es su
 // idioma portable:
 //
 //     std::uint16_t longitud;
@@ -103,10 +103,10 @@ import { LECTURAS, ES_COMPLETA } from "./funcionesDeES";
 // estudiante declara que ese campo la necesita, y a partir de ahí la regla solo
 // tiene que contar la paridad, sin saber qué significa el campo. Con
 // `swaps == 0` no hay ninguna prueba, y afirmar que falta una conversión exige
-// saber qué es ese dato. El contraejemplo está en el propio corpus: el ej1 de
-// Evaluacion3 recibe una IP `uint32_t` de la red y hace `addr.s_addr = ip` SIN
+// saber qué es ese dato. El contraejemplo está en el propio conjunto de pruebas: el ej1 de
+// las pruebas recibe una IP `uint32_t` de la red y hace `addr.s_addr = ip` SIN
 // convertir, porque convertirla sería el error — misma forma exacta que los
-// cinco alumnos de Evaluacion4 y veredicto opuesto. Lo único que las distingue
+// cinco alumnos de las pruebas y veredicto opuesto. Lo único que las distingue
 // es el significado del campo, que no está en el código.
 //
 // Contraejemplo del profesor, en la misma línea: un proxy que recibe un dato y
@@ -148,11 +148,11 @@ import { LECTURAS, ES_COMPLETA } from "./funcionesDeES";
 // discrepan, y se sigue callando. La disyunción solo se cierra cuando el
 // helper ya dejó el dato en host, que es justo el caso con bug.
 //
-// Control (comprobado): la solución oficial del ej1 de Evaluacion2, que tiene
+// Control (comprobado): la solución oficial del ejercicio 1, que tiene
 // ese helper, sigue dando CERO avisos; inyectándole un segundo byteswap tras
-// la llamada, avisa en `if (ack == 1)`. Sobre los tres corpus (519 ficheros,
+// la llamada, avisa en `if (ack == 1)`. Sobre el conjunto de pruebas (519 ficheros,
 // 494 avisos) el cambio no mueve ni un aviso: el patrón no aparece en ninguna
-// entrega, la fase se hizo por lo que pueda venir en convocatorias futuras.
+// entrega, la fase se hizo por lo que pueda venir en casos futuros.
 
 export interface Finding {
   startIndex: number;
@@ -172,7 +172,7 @@ const SWAP_FUNCS = ["htons", "ntohs", "htonl", "ntohl", "byteswap"];
  * salió de un buffer leído de la red. `mempcpy` es la extensión GNU de
  * `memcpy` — misma firma, solo cambia el valor de retorno (devuelve `dst + n`
  * en vez de `dst`), así que a efectos de esta regla es idéntica. Se añadió
- * tras encontrar un falso positivo en el corpus: una recepción correcta
+ * tras encontrar un falso positivo en el conjunto de pruebas: una recepción correcta
  * escrita con `mempcpy` se leía como "origen local" porque el nombre no
  * estaba en esta lista.
  *
@@ -211,7 +211,7 @@ const PAPELES_DE_ARGUMENTO: Record<string, { buffer: number[]; tamano: number }>
 
 /** Quita los envoltorios que no cambian el valor: paréntesis y casts. Sin
  * esto, `(size_t)longitud` o `(2 + tam)` no se reconocen y el aviso se pierde
- * — casos reales del corpus. */
+ * — casos reales del conjunto de pruebas. */
 function desenvuelve(n: Parser.SyntaxNode): Parser.SyntaxNode {
   let e = n;
   while (e.type === "parenthesized_expression" || e.type === "cast_expression") {
@@ -233,7 +233,7 @@ function desenvuelve(n: Parser.SyntaxNode): Parser.SyntaxNode {
  * vale 2560 por estar convertida, `base + total - longitud` queda tan mal como
  * `base + longitud`. Se añadió de forma PREVENTIVA, a petición del profesor:
  * hay PDUs que se construyen del final hacia el principio y ahí la posición se
- * resta. No hay ningún caso así en los tres corpus de examen (comprobado: cero
+ * resta. No hay ningún caso así en el conjunto de pruebas (comprobado: cero
  * restas en aritmética de buffer dentro de una llamada), así que su único
  * control vive en sample18. */
 function operandosAditivos(n: Parser.SyntaxNode): Parser.SyntaxNode[] {
@@ -1092,7 +1092,7 @@ export function findByteswapUsoLocalIncorrectoIssues(
         }
         // 3) offset += X y offset -= X, incluido `offset += longitud + 1`.
         // Cada operando cuenta: si uno está en orden de red, el offset se mueve
-        // mal. (Caso real del corpus que el informe de corrección marca como
+        // mal. (Caso real del conjunto de pruebas que el informe de corrección marca como
         // crítico y que antes se perdía por ser una suma y no un nombre.)
         if (n.type === "assignment_expression") {
           const op = n.childForFieldName("operator")?.text;
@@ -1110,7 +1110,7 @@ export function findByteswapUsoLocalIncorrectoIssues(
         //      desplazamiento: `memcpy(mensaje + 2 + long1, ...)`.
         //    - en posición de TAMAÑO, cada sumando forma parte de la cuenta de
         //      bytes: `sendto(sd, m, long1 + long2 + 4, ...)`.
-        //  Las dos formas salieron de entregas reales en las que el estudiante
+        //  Las dos formas salieron de casos reales en las que el estudiante
         //  convierte la longitud para enviarla y luego la reutiliza en la
         //  aritmética del buffer: escribe y envía muy fuera de rango (una
         //  longitud de 10 byteswapeada vale 2560).

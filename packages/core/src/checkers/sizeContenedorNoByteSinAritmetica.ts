@@ -50,7 +50,7 @@ function enclosingFunction(node: Parser.SyntaxNode): Parser.SyntaxNode | null {
  * aritmética) el grupo opcional no casaba, el `.+?` perezoso se tragaba la
  * coma y el "tipo de elemento" salía como `char,sizeof(argv[3])` — que no
  * está en ONE_BYTE_TYPES, así que la regla avisaba sobre contenedores de
- * `char`, justo los que nunca debe marcar. Falso positivo real del corpus.
+ * `char`, justo los que nunca debe marcar. Falso positivo real del conjunto de pruebas.
  * Es la misma lección que en `memcpy-destino-repetido`: para leer la
  * estructura del código, el árbol; la regex es para texto. */
 function tipoDeElemento(typeNode: Parser.SyntaxNode): string | null {

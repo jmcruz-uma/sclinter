@@ -29,7 +29,7 @@ extern "C" void *mempcpy(void *dest, const void *src, size_t n) noexcept;
 // ---------------------------------------------------------------------------
 
 // `v = 0` sí se modela; el `mempcpy` no (es la extensión GNU que ya provocó el
-// único falso positivo residual del corpus, alumno_058). Sin la comprobación
+// único falso positivo residual del conjunto de pruebas, un caso observado). Sin la comprobación
 // de cobertura, el resumen saldría "orden de host" mirando solo la primera, y
 // el byteswap del llamante se marcaría como bug — sin haber visto que el
 // parámetro se rellena después desde un buffer.

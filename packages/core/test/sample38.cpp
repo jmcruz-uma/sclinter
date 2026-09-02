@@ -12,7 +12,7 @@
 
 // --- Deben AVISAR ---
 
-// El caso real de examen: reintento de poll() con `=` en vez de `==`.
+// El caso real : reintento de poll() con `=` en vez de `==`.
 // La condición siempre es cierta (EINTR != 0) → bucle infinito.
 int bug_do_while(pollfd *pfd) {
     int r;

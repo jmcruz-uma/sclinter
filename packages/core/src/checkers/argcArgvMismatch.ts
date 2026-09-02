@@ -11,7 +11,7 @@ import Parser from "web-tree-sitter";
 // varias comprobaciones combinadas), así que puede haber falsos negativos,
 // pero no debería dar falsos positivos en los patrones típicos.
 //
-// CORRECCIÓN (falso positivo real, alumno_019 del corpus): el operador
+// CORRECCIÓN (falso positivo real observado): el operador
 // tiene que ser de COMPARACIÓN (== != < <= > >=). Antes se aceptaba
 // cualquier `binary_expression` de `argc` con un número, así que una
 // RESTA como `int num = argc - 1;` (número de argumentos, nada que ver

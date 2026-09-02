@@ -9,7 +9,7 @@ import { hasSizingBefore } from "./ioVectorData";
 // variable nunca recibe el campo, y los datos que llegaron del otro extremo se
 // machacan con lo que hubiera en la variable.
 //
-// El informe de corrección manual de Evaluacion2 lo marca [crítico] en SIETE
+// El informe de corrección manual de las pruebas lo marca [crítico] en SIETE
 // alumnos (007, 016, 031, 043, 046, 070, 071), once ficheros. Hasta ahora solo
 // se cazaba de refilón: `byteswap-uso-local-incorrecto` avisaba en algunas de
 // esas líneas hablando del orden de bytes, que no es la causa.
@@ -23,16 +23,16 @@ import { hasSizingBefore } from "./ioVectorData";
 // no es la forma de la llamada, sino el papel del buffer y el de la variable.
 //
 //  (1) El DESTINO es un buffer que se leyó de la red ANTES de este punto
-//      (read/read_n/recv/recvfrom). Sin esto quedan 351 sitios en el corpus:
+//      (read/read_n/recv/recvfrom). Sin esto quedan 351 sitios en el conjunto de pruebas:
 //      todos los memcpy de construcción de mensajes, que son correctos.
 //
 //  (2) El DESTINO no se envía DESPUÉS (write/write_n/send/sendto). Reutilizar
 //      el buffer recibido para montar la respuesta encima es legítimo y
 //      frecuente; si se envía luego, la escritura tenía sentido y se calla.
-//      Caso real que lo exige: alumno_026 de Evaluacion1, que lee la
+//      Caso real que lo exige: un caso que lee la
 //      suscripción en `buffer` y reutiliza `buffer` para el NOTIFY que envía.
 //      OJO: "algún envío posterior", no "el primer envío" — un buffer puede
-//      enviarse antes y después (alumno_021 de Evaluacion1 manda una PDU de
+//      enviarse antes y después (un caso en el que se manda una PDU de
 //      SUBSCRIBE y luego otra de UNSUBSCRIBE en el mismo buffer).
 //
 //  (3) Y hay evidencia mecánica de que la variable no está haciendo de origen
@@ -54,19 +54,19 @@ import { hasSizingBefore } from "./ioVectorData";
 // DESCARTÓ (decisión del profesor, 2026-07-28): un `= 0` puede ser
 // perfectamente el valor que se quiere escribir en el buffer, así que esa
 // versión acusaba leyendo la intención del alumno. Y resultó innecesaria: los
-// seis sitios del corpus que dependían de aquella excepción —los `= 0` de
-// alumno_043 y el `tipo` de alumno_007— entran solos por (3b), porque el
+// seis sitios del conjunto de pruebas que dependían de aquella excepción —los `= 0`
+// y el `tipo` de casos observados— entran solos por (3b), porque el
 // código los vuelve a leer justo después. La prueba no es de dónde vino el
 // valor, sino que el programa se comporta como si el memcpy lo hubiera traído.
 //
-// MEDIDO sobre los tres corpus (519 ficheros): 25 sitios en 11 ficheros, que
+// MEDIDO sobre el conjunto de pruebas: 25 sitios en 11 ficheros, que
 // son EXACTAMENTE los once que el informe manual marca como memcpy invertido.
 // Cero avisos fuera de esa lista, cero en las soluciones del profesor, cero en
-// Evaluacion1 y Evaluacion3 (ahí el patrón no aparece).
+// las pruebas y las pruebas (ahí el patrón no aparece).
 //
 // LÍMITES ACEPTADOS:
 //  - Solo `&identificador` como origen para la forma del escalar; `&pdu.campo`
-//    queda fuera (el corpus no tiene ningún caso).
+//    queda fuera (el conjunto de pruebas no tiene ningún caso).
 //
 // SEGUNDA FORMA DE ORIGEN — CONTENEDOR SIN DIMENSIONAR (2026-07-29). El mismo
 // despiste escrito con un contenedor: `memcpy(almacen.data(), texto.data(), n)`
@@ -77,17 +77,17 @@ import { hasSizingBefore } from "./ioVectorData";
 // buffer recibido. Las condiciones (1) y (2) siguen siendo las mismas, que son
 // las que sostienen la acusación de "argumentos invertidos": el destino se
 // leyó de la red y no se envía después, así que lo que se quería era extraer.
-// MEDIDO: 2 sitios (alumno_031 ej3 y alumno_071 ej3 de Evaluacion2, este
+// MEDIDO: 2 sitios (dos casos observados, este
 // último marcado como invertido en el informe manual). `std::vector` entra
 // junto a `std::string` de forma preventiva, igual que `io-vector-data` entró
 // en su día con 0 casos: el patrón recomendado en la asignatura es el vector,
 // así que es donde aparecerá el mismo error en el futuro.
 //  - Se pierde alguna línea suelta dentro de un fichero que sí se detecta:
-//    alumno_043 ej1:148 copia `tipo_PDU`, que ni es parámetro ni se lee
+//    un caso observado copia `tipo_PDU`, que ni es parámetro ni se lee
 //    después. Sus dos hermanas (150 y 152) sí avisan, en el mismo bloque.
 //  - Todo es intra-función, como el resto del catálogo.
 //  - La inversión del lado del ENVÍO (`memcpy(&TIPO, mensaje.data(), 1)` sobre
-//    un buffer que aún no se ha rellenado, alumno_015 de Evaluacion1) NO entra
+//    un buffer que aún no se ha rellenado) NO entra
 //    aquí: la caza `envio-de-buffer-sin-rellenar` por la consecuencia.
 
 export interface Finding {

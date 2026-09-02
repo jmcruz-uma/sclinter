@@ -2,7 +2,7 @@ import Parser from "web-tree-sitter";
 import { declaracionVigente, textoDelTipo } from "./scopeResolution";
 
 // Regla: la conversión de orden de bytes no encaja con la anchura del dato.
-// Seis formas, todas silenciosas hoy y todas medidas sobre los cuatro corpus
+// Seis formas, todas silenciosas hoy y todas medidas sobre el conjunto de pruebas
 // (611 ficheros). Las tres primeras destruyen datos, las tres últimas son
 // fallos de concepto que hoy funcionan.
 //
@@ -23,7 +23,7 @@ import { declaracionVigente, textoDelTipo } from "./scopeResolution";
 //                                    // little-endian por casualidad.
 //
 // ---------------------------------------------------------------------------
-// EL CRITERIO, Y LAS TRES VECES QUE EL CORPUS LO CORRIGIÓ
+// EL CRITERIO, Y LAS TRES VECES QUE LAS PRUEBAS LO CORRIGIERON
 // ---------------------------------------------------------------------------
 //
 // 1er intento: "el tipo del ARGUMENTO no cuadra". Falso positivo inmediato:

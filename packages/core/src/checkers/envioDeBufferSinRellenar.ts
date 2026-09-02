@@ -7,7 +7,7 @@ import { ESCRITURAS } from "./funcionesDeES";
 // memoria.
 //
 // La regla persigue la CONSECUENCIA, no la intención. Los dos casos reales
-// del corpus llegan al mismo sitio por caminos distintos:
+// del conjunto de pruebas llegan al mismo sitio por caminos distintos:
 //
 //   PDU suscripcion;                                  // nunca rellena nada
 //   write_n(sd, &suscripcion, sizeof(suscripcion));
@@ -98,7 +98,7 @@ function structsTotalmenteInicializados(root: Parser.SyntaxNode): Set<string> {
  * salir `init_declarator`; de ahí que el fallo apareciera solo en unas
  * declaraciones y no en otras.
  *
- * Tres falsos positivos reales del corpus salieron de aquí. Declarar una
+ * Tres falsos positivos reales del conjunto de pruebas salieron de aquí. Declarar una
  * función dentro del cuerpo de otra es legal pero no se ve en un examen, así
  * que darlo por inicializado es seguro: el error posible es callar de más. */
 function declaracionesSinInicializador(fnDef: Parser.SyntaxNode): Map<string, Parser.SyntaxNode> {

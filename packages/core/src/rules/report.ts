@@ -1,8 +1,10 @@
 import Parser from "web-tree-sitter";
 import { RULES } from "./index";
+import { codigoDe } from "./codigos";
 
 export interface ReportFinding {
   ruleId: string;
+  codigo: string;
   ruleTitulo: string;
   line: number;
   message: string;
@@ -23,6 +25,7 @@ export function buildReport(
       const line = before.split("\n").length;
       findings.push({
         ruleId: rule.id,
+        codigo: codigoDe(rule.id),
         ruleTitulo: rule.titulo,
         line,
         message: f.message,
@@ -36,6 +39,7 @@ export function buildReport(
 
 export interface RangedFinding {
   ruleId: string;
+  codigo: string;
   ruleTitulo: string;
   message: string;
   startIndex: number;
@@ -57,6 +61,7 @@ export function buildRangedReport(
     for (const f of rule.run(tree, language)) {
       findings.push({
         ruleId: rule.id,
+        codigo: codigoDe(rule.id),
         ruleTitulo: rule.titulo,
         message: f.message,
         startIndex: f.startIndex,
@@ -79,11 +84,11 @@ export function formatReport(fileName: string, findings: ReportFinding[]): strin
     lines.push("de error mecánico ya catalogados.");
   } else {
     for (const f of findings) {
-      lines.push(`  [línea ${f.line}] (${f.ruleId}) ${f.message}`);
+      lines.push(`  [línea ${f.line}] (${f.codigo}) ${f.message}`);
     }
     lines.push("");
     lines.push(`${findings.length} aviso(s). Revísalos antes de entregar — no bloquean la`);
-    lines.push("entrega, son pistas sobre errores mecánicos típicos de convocatorias anteriores.");
+    lines.push("entrega, son pistas sobre errores mecánicos frecuentes.");
   }
 
   return lines.join("\n");

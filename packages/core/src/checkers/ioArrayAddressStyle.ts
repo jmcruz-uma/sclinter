@@ -7,7 +7,7 @@ import { ES_COMPLETA } from "./funcionesDeES";
 // &arr como buffer con un std::array es correcto (&arr == arr.data()),
 // pero se marca igual por consistencia de hábito con std::string/vector.
 //
-// CORRECCIÓN (falso positivo real, alumno_021 Evaluacion2): antes se
+// CORRECCIÓN (falso positivo real observado): antes se
 // recogían los nombres declarados como std::array en la FUNCIÓN ENTERA y se
 // preguntaba solo "¿este nombre está en el conjunto?", sin noción de
 // ámbito. Con dos variables distintas del mismo nombre —un

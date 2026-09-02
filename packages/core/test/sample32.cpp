@@ -4,7 +4,7 @@
 #include <netinet/in.h>
 
 // sample32 — sin-port-no-htons: tres patrones CORRECTOS que antes daban
-// falso positivo (vistos en entregas reales de examen), más sus controles
+// falso positivo (vistos en casos reales), más sus controles
 // hermanos que SÍ deben seguir avisando.
 
 // --- Patrón A: conversión sobre la VARIABLE ORIGEN antes de asignar ---

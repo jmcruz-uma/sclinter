@@ -4,7 +4,7 @@
 
 // sample33 — pipe-extremos-invertidos con tubería declarada como
 // std::array<int,2> y creada con pipe(arr.data()) (patrón del plan nuevo,
-// visto en entregas reales de examen). Antes se escapaba: findPipeArrayNames
+// visto en casos reales). Antes se escapaba: findPipeArrayNames
 // solo reconocía pipe(fd) con fd identificador (C-array), no pipe(arr.data()),
 // así que el array no se registraba como tubería y no se comprobaba ningún
 // extremo. La detección del extremo (arr[0]/arr[1]) ya funcionaba con
