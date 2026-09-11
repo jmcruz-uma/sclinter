@@ -54,3 +54,31 @@ int if_envolvente_demasiado_flojo(int argc, char* argv[]) {
     }
     return 0;
 }
+
+// PASO 0 (dos pasos: primero "¿se comprobó argc en absoluto?", luego
+// lo de siempre) — CONTROL que SÍ debe avisar: `argc` no se menciona
+// en ningún punto de la función, y se accede a argv[1] a ciegas.
+int sin_comprobar_argc_en_absoluto(int argc, char* argv[]) {
+    std::string a = argv[1];
+    (void)a;
+    return argc;
+}
+
+// PASO 0 — CONTROL que NO debe avisar: argv[0] (el nombre del
+// programa) siempre es válido, se compruebe argc o no.
+int solo_argv0_sin_comprobar(int argc, char* argv[]) {
+    std::string nombre = argv[0];
+    (void)nombre;
+    return argc;
+}
+
+// PASO 0 — CONTROL que NO debe avisar: la función NO declara `argc`
+// como parámetro propio, solo recibe `argv` (presumiblemente ya
+// validado por quien la llama). Sin `argc` en el ámbito de esta
+// función no hay nada que ella pudiera comprobar — exigirlo sería
+// análisis interprocedural, explícitamente fuera de alcance (ver
+// CLAUDE.md, límite intra-función).
+void auxiliar_sin_parametro_argc(char* argv[]) {
+    std::string a = argv[2];
+    (void)a;
+}

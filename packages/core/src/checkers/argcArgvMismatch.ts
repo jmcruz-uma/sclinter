@@ -7,6 +7,40 @@ import Parser from "web-tree-sitter";
 // 0..M-1, acceder a argv[M] o más allá es memoria fuera de lo
 // comprobado.
 //
+// PASO 0 (previo a todo lo anterior): si para un acceso `argv[N]` con
+// N > 0 no hay NINGUNA comprobación que lo gobierne (ver más abajo),
+// se distingue entre dos situaciones antes de callar:
+//   - la función no menciona `argc` en absoluto ANTES de ese acceso
+//     (ni en una comparación ni en cualquier otro uso): es el caso
+//     "no se comprobó nada de nada", y aquí SÍ se avisa — es barato de
+//     detectar (basta con mirar si el identificador `argc` aparece
+//     antes en el cuerpo de la función) y es una categoría de bug
+//     distinta y más flagrante que "la comprobación existe pero no
+//     llega a cubrir este acceso".
+//   - `argc` sí aparece antes (aunque sea en una resta como
+//     `argc - 1`, o en una comprobación que no gobierna ESTE acceso
+//     concreto): se mantiene el silencio de siempre — ya se decidió
+//     explícitamente que "validar mal" en una rama que no es esta no
+//     es asunto de esta regla (ver el caso de control
+//     `usa_argc_en_resta` en sample43.cpp).
+//
+// RESTRICCIÓN NECESARIA para el PASO 0 (encontrada auditando el
+// corpus, no evidente a priori): solo se aplica si la función que
+// contiene el acceso DECLARA `argc` como parámetro propio. Si una
+// función auxiliar recibe solo `char** argv` (sin `argc`; ver
+// `construido_con_parentesis` en sample51.cpp, que ni siquiera
+// pertenece a esta regla), esa función no tiene ningún `argc` que
+// pudiera comprobar — la validación, si existe, vive en quien la
+// llama, y eso es análisis interprocedural, fuera de alcance (ver
+// límite documentado en CLAUDE.md). Sin esta restricción, PASO 0
+// dispararía sobre cualquier función auxiliar que recibe argv ya
+// validado por su llamante, puro ruido. La detección de "argc como
+// parámetro" es sobre el IDENTIFICADOR, sin mirar la forma del
+// declarador: `char *argv[]` anida como `array_declarator` y
+// `char **argv` como `pointer_declarator` doblado, pero en los dos
+// casos el identificador es una hoja alcanzable igual por el mismo
+// recorrido (comprobado con ambas formas antes de escribir esto).
+//
 // CÓMO RAZONA (reescrito tras un falso positivo real — ver más abajo):
 // para CADA acceso `argv[N]` se calcula una cota inferior de argc
 // GARANTIZADA en ese punto, componiendo dos fuentes:
@@ -164,6 +198,47 @@ function argcLowerBound(
   }
 }
 
+// ¿Aparece el identificador `argc` en algún punto de `body` ANTES de
+// `beforeIndex`? Recorrido simple, sin distinguir cómo se usa —
+// cualquier mención cuenta como "esto sí se miró", aunque no sea una
+// comparación (ver comentario de cabecera, PASO 0).
+function hasArgcReferenceBefore(
+  body: Parser.SyntaxNode,
+  beforeIndex: number
+): boolean {
+  let found = false;
+  function walk(n: Parser.SyntaxNode) {
+    if (found) return;
+    if (n.type === "identifier" && n.text === "argc" && n.startIndex < beforeIndex) {
+      found = true;
+      return;
+    }
+    for (const child of n.namedChildren) walk(child);
+  }
+  walk(body);
+  return found;
+}
+
+// ¿Declara esta función `argc` como parámetro propio? Ver RESTRICCIÓN
+// en el comentario de cabecera: sin esto, PASO 0 dispararía sobre
+// funciones auxiliares que reciben `argv` ya validado por su llamante
+// (interprocedural, fuera de alcance).
+function declaresArgcParameter(fn: Parser.SyntaxNode): boolean {
+  const params = fn.childForFieldName("declarator")?.childForFieldName("parameters");
+  if (!params) return false;
+  let found = false;
+  function walk(n: Parser.SyntaxNode) {
+    if (found) return;
+    if (n.type === "identifier" && n.text === "argc") {
+      found = true;
+      return;
+    }
+    for (const child of n.namedChildren) walk(child);
+  }
+  walk(params);
+  return found;
+}
+
 // La condición efectiva de un `if` (desenvuelve `condition_clause`).
 function ifCondition(ifStmt: Parser.SyntaxNode): Parser.SyntaxNode | null {
   const cond = ifStmt.childForFieldName("condition");
@@ -250,9 +325,25 @@ export function findArgcArgvMismatchIssues(
       cur = parent;
     }
 
-    // Ninguna comprobación de argc gobierna este acceso: fuera de
-    // alcance, silencio.
-    if (bounds.length === 0) continue;
+    // Ninguna comprobación de argc gobierna este acceso. PASO 0: si
+    // además `argc` no se menciona en ningún punto anterior de la
+    // función, no es "una comprobación insuficiente" sino "ninguna
+    // comprobación en absoluto" — sí se avisa (salvo argv[0], siempre
+    // válido).
+    if (bounds.length === 0) {
+      const body = fn.childForFieldName("body");
+      if (n > 0 && body && declaresArgcParameter(fn) && !hasArgcReferenceBefore(body, sub.startIndex)) {
+        findings.push({
+          startIndex: sub.startIndex,
+          endIndex: sub.endIndex,
+          message:
+            `Se accede a argv[${n}] sin comprobar que se hayan recibido suficientes ` +
+            `argumentos. Para evitar leer memoria fuera de argv, chequea siempre ` +
+            `primero el valor de argc.`,
+        });
+      }
+      continue;
+    }
     const guaranteed = Math.max(...bounds);
 
     // `guaranteed` argumentos ⇒ índices válidos 0..guaranteed-1.

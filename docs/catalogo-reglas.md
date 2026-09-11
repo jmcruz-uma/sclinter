@@ -97,7 +97,7 @@ Medidas que no miden lo que uno cree.
 | Código | Qué detecta |
 |---|---|
 | **SC30** | `sizeof(argv[i])` — siempre el tamaño de un puntero (`char*`), nunca la longitud de la cadena. Hace falta `strlen(argv[i])`. |
-| **SC31** | Se accede a `argv[N]` fuera de lo que garantiza la comprobación previa de `argc`. *"Se compara argc contra \<K\>... Aquí se accede a argv[\<N\>], fuera de lo comprobado."* |
+| **SC31** | Se accede a `argv[N]` (N>0) fuera de lo que garantiza la comprobación previa de `argc`, o sin haber comprobado `argc` en absoluto. *"Se compara argc contra \<K\>... Aquí se accede a argv[\<N\>], fuera de lo comprobado."* / *"Se accede a argv[\<N\>] sin comprobar que se hayan recibido suficientes argumentos. Para evitar leer memoria fuera de argv, chequea siempre primero el valor de argc."* |
 | **SC32** | `sizeof(variable)` con `variable` de tipo `std::string`/`std::vector`/`std::string_view` — da el tamaño del objeto, no del contenido. Hace falta `.size()`. `std::array` excluido. |
 | **SC33** | `sizeof(X)` donde `X` es `&expresión` o una variable declarada como puntero, en **cualquier** parte del código (no solo dentro de `memcpy`). *"sizeof(\<X\>) mide el puntero (normalmente 8 bytes), no el objeto al que apunta."* |
 | **SC34** | `sizeof(...)` como segundo argumento de `poll()` (debe ser el número de descriptores, no un tamaño en bytes). |
